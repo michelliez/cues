@@ -89,6 +89,9 @@ class SeatTracker:
         # loss excluded), whether or not Cues could judge each frame, so a child is never
         # left on "working" because their hand could not be scored. Off: judged time only.
         self._time_on_task = flags.enabled("vision.flag_on_time_on_task")
+        # Time on a task Cues can watch at all (judgeable), score or not. A stage that is
+        # off or a recorded gesture with no examples never counts, flag on or off.
+        self.watchable_seconds = 0.0
         self.best_score: float | None = None
         self._last_t: float | None = None
         self._unseen_since: float | None = None
@@ -119,6 +122,7 @@ class SeatTracker:
             self.status = "in_progress"
         self.active_seconds = 0.0
         self.judged_seconds = 0.0
+        self.watchable_seconds = 0.0
         self._no_progress_wait = max(self.activity.no_progress_seconds, REFLAG_AFTER_REVIEW_SECONDS)
         self.best_score = None
         self._review_sent = False
@@ -163,6 +167,8 @@ class SeatTracker:
         if self.status == "done":
             return events
         self.active_seconds += dt
+        if judgeable:
+            self.watchable_seconds += dt
         if judgeable and score is not None:
             self.judged_seconds += dt
 
@@ -204,7 +210,9 @@ class SeatTracker:
         if self._time_on_task:
             # Not done and not already flagged after the wait: needs review, whatever the
             # score did (a brief near-match does not hold the child on "working").
-            stalled = self.status == "in_progress" and self.active_seconds >= self._no_progress_wait
+            stalled = (
+                self.status == "in_progress" and self.watchable_seconds >= self._no_progress_wait
+            )
         else:
             stalled = not reached_review and self.judged_seconds >= self._no_progress_wait
         if not self._no_progress_sent and stalled:

@@ -303,3 +303,14 @@ def test_time_on_task_never_flags_a_finished_child(monkeypatch):
     assert tr.status == "done"
     assert "no_progress" not in run(tr, ticks(1.6, 6, None))
     assert tr.status == "done"
+
+
+def test_time_on_task_never_flags_a_task_cues_cannot_watch(monkeypatch):
+    # Review of #104: the gestures/hands stage off or a recorded gesture with no examples
+    # (judgeable=False) must not flag every child after 3s.
+    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
+    act = Activity("pointing", "Pointing", "gesture", 0.78, 0.58, 3)
+    tr = SeatTracker("S1-L", act)
+    for t in [i / 10 for i in range(60)]:
+        tr.update(t, None, False, True, judgeable=False)
+    assert tr.status == "in_progress"
