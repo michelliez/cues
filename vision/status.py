@@ -44,6 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from vision import flags
 from vision.activities import Activity
 
 TRACKING_LOST_SECONDS = 3.0
@@ -83,6 +84,10 @@ class SeatTracker:
         # The wait before needs_help. Longer after the teacher's Mark as reviewed, so the
         # child they just checked in with is not flagged again within seconds.
         self._no_progress_wait = activity.no_progress_seconds
+        # vision.flag_on_time_on_task: flag after the wait of plain time on task (tracking
+        # loss excluded), whether or not Cues could judge each frame, so a child is never
+        # left on "working" because their hand could not be scored. Off: judged time only.
+        self._time_on_task = flags.enabled("vision.flag_on_time_on_task")
         self.best_score: float | None = None
         self._last_t: float | None = None
         self._unseen_since: float | None = None
@@ -195,11 +200,13 @@ class SeatTracker:
         reached_review = self.best_score is not None and (
             self.best_score >= self.activity.review_threshold
         )
-        if (
-            not reached_review
-            and not self._no_progress_sent
-            and self.judged_seconds >= self._no_progress_wait
-        ):
+        if self._time_on_task:
+            # Not done and not already flagged after the wait: needs review, whatever the
+            # score did (a brief near-match does not hold the child on "working").
+            stalled = self.status == "in_progress" and self.active_seconds >= self._no_progress_wait
+        else:
+            stalled = not reached_review and self.judged_seconds >= self._no_progress_wait
+        if not self._no_progress_sent and stalled:
             self._no_progress_sent = True
             self.status = "needs_help"
             events.append(StatusEvent("no_progress", self.best_score))
