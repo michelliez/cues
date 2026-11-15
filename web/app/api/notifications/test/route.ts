@@ -10,6 +10,9 @@ import { sendTeacherTestNotification } from "@/lib/notification-send";
 // environment variables on the host (never NEXT_PUBLIC_*): SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL),
 // SUPABASE_SERVICE_ROLE_KEY, SPECTRUM_PROJECT_ID, SPECTRUM_PROJECT_SECRET, and optionally
 // SPECTRUM_SENDER_PHONE.
+// The Spectrum send may take up to 25s; leave room so the host does not cut it off.
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   // Local development also reads the root and cues env files; a host's environment wins.
   const root = path.resolve(process.cwd(), process.cwd().endsWith(path.sep + "web") ? ".." : ".");
