@@ -25,8 +25,6 @@ export default async function ReviewPage() {
         themeToggleEnabled={isEnabled("web.theme_toggle")}
         visionStationConfigEnabled={isEnabled("web.vision_station_config")}
         interventionsEnabled={isEnabled("web.interventions")}
-        reviewWaitingEnabled={isEnabled("web.review_waiting")}
-        flagDecisionsEnabled={isEnabled("web.flag_decisions")}
       />
     </div>
   );

@@ -29,7 +29,9 @@ def activity(activity_id="task", check_type="rule"):
     )
 
 
-def snapshot(seconds, *, seat="A", activity_id="task", score=None, **changes):
+# A stall is built from observable low scores: 0.0 is a judged failure, while None means
+# the task could not be judged (missing evidence), which never accumulates toward a stall.
+def snapshot(seconds, *, seat="A", activity_id="task", score=0.0, **changes):
     return SeatState.model_validate(
         {
             "session_id": UUID(int=1),

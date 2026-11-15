@@ -25,22 +25,26 @@ import { startLocalVisionSync } from "@/lib/local-vision";
 import { SessionControls } from "@/components/session-controls";
 import LocalClassroomFeed from "@/components/local-classroom-feed";
 import { PersonDetails } from "@/components/person-panel";
-import {
-  FlagDecisionButtons,
-  MarkReviewedButton,
-} from "@/components/mark-reviewed-button";
+import { MarkReviewedButton } from "@/components/mark-reviewed-button";
 import { TeacherReviewActions } from "@/components/teacher-review-actions";
 import { CameraHealthStrip } from "@/components/camera-health-strip";
+import { emptyPeopleMessage, NO_OBSERVATIONS } from "@/lib/camera-health";
+import {
+  UNMANAGED,
+  contextFromSnapshot,
+  currentObservations,
+  waitingMessage,
+} from "@/lib/observation-context";
+import type { SessionSnapshot } from "@/lib/session-controls";
+import { useLocalVision } from "@/lib/use-local-vision";
 import { ReviewCompanion } from "@/components/review-companion";
-import { ReviewCard, WaitingReviewCard } from "@/components/review-card";
+import { ReviewCard } from "@/components/review-card";
 import { StudentStrip } from "@/components/student-strip";
 import {
   readMarked,
   reviewIssueLine,
-  reviewQueue,
   stripEntries,
-  unexplainedDrops,
-  withResolvedReviewMark,
+  waitingCount as pendingCount,
   writeMarked,
 } from "@/lib/classroom-view";
 import {
@@ -50,7 +54,6 @@ import {
 } from "@/lib/station-writer";
 import {
   inCameraView,
-  isFresh,
   observationPresentation,
   type ObservationOptions,
 } from "@/lib/observation-presentation";
@@ -66,8 +69,7 @@ const Companion = dynamic(() => import("@/components/login-companion"), {
   ssr: false,
 });
 
-// What the session controls report when the station has no activity running.
-const NO_ACTIVITY = "No activity running";
+const ignoreActivity = () => {};
 const INITIAL: FeedState = {
   snapshot: null,
   connection: "connecting",
@@ -75,14 +77,14 @@ const INITIAL: FeedState = {
   error: null,
 };
 type Presentation = ReturnType<typeof observationPresentation>;
+// Only a pending teacher_review makes a card read "Check in" (stripEntries);
+// a camera status never gets the review tone.
 const statusTone = (presentation: Presentation): PersonTone =>
-  presentation.needsReview
-    ? "review"
-    : presentation.currentStatus === "done"
-      ? "done"
-      : presentation.currentStatus === "in_progress"
-        ? "working"
-        : "quiet";
+  presentation.currentStatus === "done"
+    ? "done"
+    : presentation.currentStatus === "in_progress"
+      ? "working"
+      : "quiet";
 
 /** Who the dashboard is for: unknown until the sign-in check returns. */
 type Account =
@@ -125,8 +127,6 @@ export default function Dashboard({
   healthStripEnabled = false,
   interventionsEnabled = false,
   resetPeopleEnabled = false,
-  reviewWaitingEnabled = false,
-  flagDecisionsEnabled = false,
 }: {
   /** "classroom" (the default) or "review", the To review page. */
   view?: "classroom" | "review";
@@ -153,11 +153,11 @@ export default function Dashboard({
   interventionsEnabled?: boolean;
   /** web.reset_people: switching or restarting the activity puts everyone back to working. */
   resetPeopleEnabled?: boolean;
-  /** web.review_waiting: To review also lists people the camera flagged who have no request yet. */
-  reviewWaitingEnabled?: boolean;
-  /** web.flag_decisions: durable teacher answers to camera-only flags; needs migration 20261115000200. */
-  flagDecisionsEnabled?: boolean;
 }) {
+  // One reading of this laptop's vision service for the strip and the empty-room message.
+  const localVision = useLocalVision(hostedLocalFeedEnabled, hostedDashboardOrigin);
+  // The session snapshot SessionControls reads (the only reader): null until it loads.
+  const [sessionSnapshot, setSessionSnapshot] = useState<SessionSnapshot | null>(null);
   const [observationNow, setObservationNow] = useState<number | null>(null);
   useEffect(() => {
     if (!personObservationsEnabled) return;
@@ -202,9 +202,6 @@ export default function Dashboard({
   const resolvesStation =
     !stationOverride && (sessionControlsEnabled || teacherLoginEnabled);
   const [account, setAccount] = useState<Account>({ state: "checking" });
-  // The session controls' activity label. With no activity running, vision
-  // sends no one, so an empty list does not mean the camera is off.
-  const [sessionActivity, setSessionActivity] = useState("");
   const station =
     stationOverride || (account.state === "ready" ? account.station : "");
   // Marks are shared with the other page through this tab's storage, per
@@ -366,14 +363,28 @@ export default function Dashboard({
 
   // People are labelled as the backend names them (seats.display_name,
   // "Person 1", "Person 2"…): no made-up names.
-  const seats = feed.snapshot ? seatViews(feed.snapshot) : [];
+  //
+  // `allSeats` is everyone with a seat (names, camera-health inputs). `seats` keeps only the
+  // observations of the current session, activity and revision: a fresh row from an earlier
+  // activity, session or revision is never shown as current. Checked on every render, so a
+  // late feed response for an older context can't come back as current.
+  // Without session controls (or on the To review page, which has none) there is no context to
+  // check against and rows are shown as before.
+  const observationContext =
+    !(sessionControlsEnabled && client) || view === "review"
+      ? UNMANAGED
+      : contextFromSnapshot(sessionSnapshot);
+  const allSeats = feed.snapshot ? seatViews(feed.snapshot) : [];
+  const seats = feed.snapshot
+    ? seatViews(currentObservations(feed.snapshot, observationContext))
+    : [];
   const activityName = (id: string) =>
     activityLabel(
       id,
       feed.snapshot?.activities.find((item) => item.id === id)?.name,
     );
   const nameOf = (seatId: string) =>
-    seats.find((seat) => seat.id === seatId)?.display_name ?? "A student";
+    allSeats.find((seat) => seat.id === seatId)?.display_name ?? "A student";
   const observationOptions: ObservationOptions = {
     enabled: personObservationsEnabled,
     now: observationNow,
@@ -389,8 +400,10 @@ export default function Dashboard({
   const inView = seats.filter((seat) =>
     inCameraView(seat.state, observationOptions),
   );
-  const cameraReporting = seats.some((seat) =>
-    isFresh(seat.state, observationOptions),
+  // The camera-health strip keeps reading every row (what the database received), not only
+  // the current context's.
+  const allInView = allSeats.filter((seat) =>
+    inCameraView(seat.state, observationOptions),
   );
   const reviewsLive =
     reviewsEnabled &&
@@ -474,78 +487,15 @@ export default function Dashboard({
       ),
     );
   }, [stillFlagged]);
-  // People whose row reads Needs Review but who have no request yet: listed on
-  // To review so the two agree. Only once the review feed is live, so no one is
-  // shown twice while requests are still loading.
-  const { flagged: flaggedOnly, count: waitingCount } = reviewQueue({
-    enabled: reviewWaitingEnabled,
-    live: reviewsLive,
-    people: inView,
-    flagged: (seat) => present(seat).needsReview,
-    askedSeatIds: reviewGroups.map((group) => group.seat_id),
-    marked: markedSeats,
-  });
-  // What the companion follows. With flagged people counted, wait for the
-  // camera data too, so a count that is about to grow never reads as cleared.
-  // A flagged person who drops out of the count only because the camera lost
-  // them or went quiet (not a mark, a request or a reset) makes the companion
-  // rest until they are back or resolved: that is not a cleared queue.
-  const flaggedIds = flaggedOnly.map((seat) => seat.id).join(",");
-  const [countedFlagged, setCountedFlagged] = useState(flaggedIds);
-  const [droppedFlagged, setDroppedFlagged] = useState<readonly string[]>([]);
-  const nowFlagged = new Set(flaggedIds ? flaggedIds.split(",") : []);
-  const dropReasons = {
-    marked: markedSeats,
-    asked: new Set(reviewGroups.map((group) => group.seat_id)),
-    row: (id: string) => seats.find((seat) => seat.id === id)?.state ?? undefined,
-    clock: observationNow,
-  };
-  if (flaggedIds !== countedFlagged) {
-    setCountedFlagged(flaggedIds);
-    setDroppedFlagged((previous) =>
-      unexplainedDrops(
-        [
-          ...new Set([
-            ...previous,
-            ...(countedFlagged ? countedFlagged.split(",") : []),
-          ]),
-        ],
-        nowFlagged,
-        dropReasons,
-      ),
-    );
-  }
-  const unexplained = unexplainedDrops(droppedFlagged, nowFlagged, dropReasons);
-  // Forget anyone who has since been resolved (or timed out), so a later loss
-  // of someone no longer flagged never makes the companion rest.
-  if (
-    flaggedIds === countedFlagged &&
-    unexplained.length !== droppedFlagged.length
-  )
-    setDroppedFlagged(unexplained);
-  const companionCount =
-    reviewsLive &&
-    (!reviewWaitingEnabled || (feed.snapshot && unexplained.length === 0))
-      ? waitingCount
-      : null;
-  // Attention lists them too (web.review_waiting), under the requests, so the
-  // cards and Attention always agree. They stay until the teacher answers.
-  const flaggedIdSet = new Set(flaggedOnly.map((seat) => seat.id));
-  // Marked as reviewed, but the camera hasn't reset them yet: not "All clear"
-  // while their card still reads Needs Review.
-  const catchingUp =
-    reviewWaitingEnabled &&
-    reviewsLive &&
-    inView.some(
-      (seat) => markedSeats.has(seat.id) && present(seat).needsReview,
-    );
+  // Attention, the pending count and the companion all come from pending
+  // teacher_reviews and nothing else: a camera or progress status never adds
+  // anyone. 0 until the review feed is live.
+  const waitingCount = pendingCount(reviewsLive, reviewGroups);
+  const companionCount = reviewsLive ? waitingCount : null;
   // A person picked from the strip who has no request opens in the side
   // panel; someone with a request opens in place in the attention list.
-  // A flagged person opens in place in the attention list too.
   const selectedPerson =
-    selectedId &&
-    reviewsFor(selectedId).length === 0 &&
-    !flaggedIdSet.has(selectedId)
+    selectedId && reviewsFor(selectedId).length === 0
       ? (inView.find((seat) => seat.id === selectedId) ?? null)
       : null;
   // A request arrives for the person open in the side panel: the panel closes
@@ -616,11 +566,6 @@ export default function Dashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settling]);
   const resolved = (review: TeacherReview) => {
-    setMarkedSeats((previous) => withResolvedReviewMark(
-      previous,
-      review,
-      seats.find((seat) => seat.id === review.seat_id)?.state ?? null,
-    ));
     resolvedReviewIds.current.add(review.id);
     setReviews((state) => ({
       ...state,
@@ -632,19 +577,17 @@ export default function Dashboard({
   // the same table, so they leave the others too) and let vision reset them to working.
   // Remember the mark until vision moves them out of review, so the row (which may remount in
   // the other group) can't offer it twice, and drop their open requests from the queue now.
-  const applyMarked = (marked: string, scope?: { session_id: string; activity_id: string }) => {
+  const applyMarked = (marked: string) => {
     setMarkedSeats((previous) => new Set(previous).add(marked));
     setReviews((state) => {
-      const matches = (item: TeacherReview) => item.seat_id === marked &&
-        (!scope || (item.session_id === scope.session_id && item.activity_id === scope.activity_id));
       const closed = (state.reviews ?? []).filter(
-        matches,
+        (item) => item.seat_id === marked,
       );
       for (const item of closed) resolvedReviewIds.current.add(item.id);
       return {
         ...state,
         reviews:
-          state.reviews?.filter((item) => !matches(item)) ?? null,
+          state.reviews?.filter((item) => item.seat_id !== marked) ?? null,
       };
     });
   };
@@ -665,32 +608,6 @@ export default function Dashboard({
         }}
       />
     ) : null;
-  // Support needed / No support needed for a flagged person with no request:
-  // save the chosen answer separately from agent reviews. Until the migration
-  // is rolled out, the flag-off path offers the existing single acknowledgement.
-  const flagDecisions = (sessionId: string | null, seatId: string) => {
-    if (!flagDecisionsEnabled) return markReviewedButton(sessionId, seatId);
-    const observation = seats.find((seat) => seat.id === seatId)?.state;
-    if (!observation || observation.session_id !== sessionId) return null;
-    return markedSeats.has(seatId) ? (
-      <p className="person-note" role="status">
-        Saved. They’ll show as working again in a moment.
-      </p>
-    ) : reviewActionsEnabled && client && sessionId ? (
-      <FlagDecisionButtons
-        key={seatId}
-        client={client}
-        observation={observation}
-        onDecided={(decision) => {
-          applyMarked(decision.seat_id, decision);
-          if (selectedId === decision.seat_id) setSelectedId(null);
-          requestAnimationFrame(() =>
-            (view === "review" ? pageHeading : listHeading).current?.focus(),
-          );
-        }}
-      />
-    ) : null;
-  };
   const row = (
     seatId: string,
     content: React.ReactNode,
@@ -718,14 +635,11 @@ export default function Dashboard({
             client={reviewActionsEnabled ? client : null}
             onResolved={resolved}
             interventionsEnabled={interventionsEnabled}
-            actions={(flaggedIdSet.has(seatId) && pending.length === 0
-              ? flagDecisions
-              : markReviewedButton)(
-              pending[0]?.session_id ??
-                seats.find((seat) => seat.id === seatId)?.state?.session_id ??
-                null,
-              seatId,
-            )}
+            actions={
+              pending.length
+                ? markReviewedButton(pending[0].session_id, seatId)
+                : null
+            }
           />
         ) : null}
       </li>
@@ -740,13 +654,15 @@ export default function Dashboard({
       : feed.loading && !configurationError
         ? "Loading…"
         : "People aren’t available right now."
-    : cameraReporting
-      ? "No one is in view right now."
-      : sessionLive && sessionActivity === NO_ACTIVITY
-        ? "No activity running. Pick one and press Start to see people here."
-      : observationOptions.connected
-        ? "The camera is off. People appear here when it sees them."
-        : "Updates paused. Reconnecting…";
+    : waitingMessage(
+        emptyPeopleMessage({
+          vision: localVision.vision,
+          localReadable: localVision.localReadable,
+          feedConnected: observationOptions.connected,
+        }),
+        NO_OBSERVATIONS,
+        observationContext,
+      );
 
   const connectionProblem =
     !waitingForStation &&
@@ -811,21 +727,14 @@ export default function Dashboard({
                     <SessionControls
                       client={client}
                       station={station}
-                      onActivity={setSessionActivity}
+                      onActivity={ignoreActivity}
                       teacherLoginEnabled={teacherLoginEnabled}
+                      onSnapshot={setSessionSnapshot}
                       resetPeople={
                         resetPeopleEnabled
                           ? {
                               seatIds: reviewGroups.map((group) => group.seat_id),
-                              // Flagged people without a request have nothing to close, but
-                              // their "No suggestion yet" card goes with everyone else's.
-                              onReset: (ids) => {
-                                [...ids, ...flaggedOnly.map((seat) => seat.id)].forEach(
-                                  (id) => applyMarked(id),
-                                );
-                                // Everyone starts over: nobody is still "just lost".
-                                setDroppedFlagged([]);
-                              },
+                              onReset: (ids) => ids.forEach(applyMarked),
                             }
                           : null
                       }
@@ -834,11 +743,10 @@ export default function Dashboard({
                   {healthStripEnabled && station ? (
                     <CameraHealthStrip
                       station={station}
-                      updatedAt={seats.map((seat) => seat.state?.updated_at)}
-                      inView={inView.length}
+                      updatedAt={allSeats.map((seat) => seat.state?.updated_at)}
+                      inView={allInView.length}
                       conflict={conflict}
-                      hostedEnabled={hostedLocalFeedEnabled}
-                      hostedOrigin={hostedDashboardOrigin}
+                      local={localVision}
                     />
                   ) : null}
                 </div>
@@ -889,7 +797,7 @@ export default function Dashboard({
                     </button>
                   </div>
                 ) : null}
-                {reviewGroups.length || flaggedOnly.length ? (
+                {reviewGroups.length ? (
                   <ol className="review-list">
                     {reviewGroups.map((group, index) => {
                       const lead = group.reviews[0];
@@ -924,19 +832,6 @@ export default function Dashboard({
                         />
                       );
                     })}
-                    {flaggedOnly.map((seat, index) => (
-                      <WaitingReviewCard
-                        key={seat.id}
-                        headingId={`review-card-${seat.id}`}
-                        index={reviewGroups.length + index + 1}
-                        name={seat.display_name}
-                        issue={reviewIssueLine(seat.activity, true, 1)}
-                        mark={flagDecisions(
-                          seat.state?.session_id ?? null,
-                          seat.id,
-                        )}
-                      />
-                    ))}
                   </ol>
                 ) : (
                   reviewNotice ? null : (
@@ -983,10 +878,6 @@ export default function Dashboard({
                       stale={false}
                       client={null}
                       onResolved={resolved}
-                      actions={markReviewedButton(
-                        selectedPerson.state?.session_id ?? null,
-                        selectedPerson.id,
-                      )}
                     />
                   </div>
                 ) : (
@@ -1019,7 +910,7 @@ export default function Dashboard({
                   </div>
                 ) : null}
 
-                {reviewGroups.length || flaggedOnly.length ? (
+                {reviewGroups.length ? (
                   <ul className="row-list">
                     {reviewGroups.map((group) => {
                       const seat = seats.find((s) => s.id === group.seat_id);
@@ -1042,24 +933,6 @@ export default function Dashboard({
                         group.reviews,
                       );
                     })}
-                    {flaggedOnly.map((seat) =>
-                      row(
-                        seat.id,
-                        <ReviewRowContent
-                          name={seat.display_name}
-                          meta={
-                            mixedActivities
-                              ? `${seat.activity} · flagged by the camera`
-                              : "Flagged by the camera"
-                          }
-                          time={seat.state?.updated_at ?? ""}
-                          timeLabel="Now"
-                          elevated={false}
-                        />,
-                        present(seat),
-                        [],
-                      ),
-                    )}
                   </ul>
                 ) : (
                   reviewNotice ? null : (
@@ -1067,9 +940,7 @@ export default function Dashboard({
                       {!reviewsEnabled || configurationError
                         ? "Cues will ask here when someone may need you."
                         : reviewsLive
-                          ? catchingUp
-                            ? "Marked as reviewed. The camera will catch up in a moment."
-                            : "All clear. Cues will ask when someone may need you."
+                          ? "All clear. Cues will ask when someone may need you."
                           : "Checking…"}
                     </p>
                   )

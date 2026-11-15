@@ -44,7 +44,7 @@ export function PersonDetails({
   /** Present only when review decisions can be saved. */
   client: SupabaseClient | null;
   onResolved: (review: TeacherReview) => void;
-  /** "Mark as reviewed", shown while this person is flagged or has a request. */
+  /** "Mark as reviewed", shown only with a pending review. */
   actions?: React.ReactNode;
   /** web.interventions */
   interventionsEnabled?: boolean;
@@ -55,7 +55,6 @@ export function PersonDetails({
       <p className="person-status">
         {presentation ? presentation.detail : "Not in view right now."}
       </p>
-      {presentation?.needsReview && !review ? actions : null}
       {review ? (
         <div className="person-request">
           <p className="ws-caption">

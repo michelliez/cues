@@ -1,5 +1,12 @@
 # Cues bug-fix implementation log
 
+**Update (2026-11-15, merge with main):** fix 4 (camera-only decisions) was dropped. `main`
+(Keith, 308beae) removed camera-only flags from the dashboard: a person appears for the teacher
+only through an agent review. `web.flag_decisions`, `TeacherFlagDecision`, `web/lib/flag-decisions.ts`
+and migration `20261115000200` are removed. The review-reset repair (fix 3) is kept and is applied
+to the hosted project as `20261115082639_review_resolution_marks` (its old number, `000100`, is
+Keith's `task_observable`).
+
 This is the working reference for the sequential fixes requested on 2026-11-15.
 Read it with `backend-audit-2026-11-15.md` before starting another fix. The PRD is
 still the product source of truth. Update this log with actual verification

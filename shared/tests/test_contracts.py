@@ -13,38 +13,9 @@ from shared.contracts import (
     ExpressionContext,
     SeatState,
     SeatStatus,
-    TeacherFlagDecision,
 )
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
-
-
-@pytest.mark.parametrize("decision", ["confirmed", "dismissed"])
-def test_teacher_flag_decisions_retain_the_answer_and_reject_invented_fields(decision):
-    data = {
-        "id": "11111111-1111-4111-8111-111111111111",
-        "session_id": "00000000-0000-4000-8000-000000000001",
-        "seat_id": "S1-P1",
-        "activity_id": "raise_hand",
-        "session_revision": 0,
-        "observed_at": "2026-11-15T06:00:00Z",
-        "decision": decision,
-        "decided_at": "2026-11-15T06:00:01Z",
-        "teacher_id": "00000000-0000-4000-8000-000000000002",
-    }
-    record = TeacherFlagDecision.model_validate(data)
-    assert record.decision == decision
-    assert TeacherFlagDecision.model_validate_json(record.model_dump_json()) == record
-    for change in (
-        {"decision": "reviewed"},
-        {"teacher_id": "from-browser"},
-        {"session_revision": -1},
-        {"session_revision": "0"},
-        {"observed_at": "2026-11-15T06:00:00"},
-        {"camera_frame": "forbidden"},
-    ):
-        with pytest.raises(ValidationError):
-            TeacherFlagDecision.model_validate(data | change)
 
 
 def rows(name):

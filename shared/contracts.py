@@ -151,6 +151,20 @@ class SeatState(_Contract):
     session_revision: SessionRevision | None = None
     task_score: UnitScore | None = None
     expression_context: ExpressionContext | None = None
+    # Could Cues judge this person on the task right now? Different from tracking_valid (the
+    # person is still tracked) and never a failure: False means missing evidence and
+    # task_score is None; True means a judged observation and task_score is a number, where
+    # 0.0 is a real, countable failure. Left None (rows from before the column existed, or
+    # producers that don't set it) it follows the score, so every consumer reads a bool.
+    task_observable: bool | None = None
+
+    @model_validator(mode="after")
+    def _task_observable_matches_score(self) -> Self:
+        if self.task_observable is None:
+            self.task_observable = self.task_score is not None
+        elif self.task_observable != (self.task_score is not None):
+            raise ValueError("task_observable must be true exactly when task_score is a number")
+        return self
 
 
 class Activity(_Contract):
@@ -195,19 +209,3 @@ class Session(_Contract):
     started_at: AwareDatetime
     ended_at: AwareDatetime | None
     revision: Annotated[int, Field(ge=0, strict=True)]
-
-
-class TeacherFlagDecision(_Contract):
-    """A teacher's recorded camera-flag answer; never a fabricated agent review."""
-
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
-
-    id: UUID
-    session_id: UUID
-    seat_id: Identifier
-    activity_id: Identifier
-    session_revision: SessionRevision
-    observed_at: AwareDatetime
-    decision: Literal["confirmed", "dismissed"]
-    decided_at: AwareDatetime
-    teacher_id: UUID

@@ -76,6 +76,9 @@ class JsonlSink:
 class SupabaseSink:
     def __init__(self, client) -> None:
         self.client = client
+        # Migration 20261115000100 adds seat_state.task_observable. Until it is applied the
+        # write falls back to the old columns (the score already says "not judged": None).
+        self._observable_column = True
 
     def write_event(self, row: dict[str, Any]) -> None:
         self.client.table("events").insert(row).execute()
@@ -86,7 +89,17 @@ class SupabaseSink:
         payload = dict(row)
         if payload.get("session_revision") is None:
             payload.pop("session_revision", None)
-        self.client.table("seat_state").upsert(payload, on_conflict="seat_id").execute()
+        if not self._observable_column:
+            payload.pop("task_observable", None)
+        try:
+            self.client.table("seat_state").upsert(payload, on_conflict="seat_id").execute()
+        except Exception as exc:
+            if not (self._observable_column and "task_observable" in str(exc)):
+                raise
+            self._observable_column = False
+            log.warning("seat_state.task_observable is not in the database yet; apply migration")
+            payload.pop("task_observable", None)
+            self.client.table("seat_state").upsert(payload, on_conflict="seat_id").execute()
 
 
 class Emitter:

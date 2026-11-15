@@ -204,9 +204,14 @@ def test_a_gesture_flags_after_three_seconds_of_judged_time(monkeypatch, tmp_pat
     assert "no_progress" not in run(tr, ticks(0, 2.8, 0.1))
     assert "no_progress" in run(tr, ticks(2.9, 3.2, 0.1))
     assert tr.status == "needs_help"
-    # Hands down (nothing to score) is not doing it either: it counts.
+    # No hand found (score None: the task is not observable for this person) is missing
+    # evidence, not the child doing nothing: it counts toward nothing.
     tr = SeatTracker("S1-L", _three_second())
-    assert "no_progress" in run(tr, ticks(0, 3.2, None, hand=False))
+    assert run(tr, ticks(0, 10, None, hand=False)) == []
+    assert tr.judged_seconds == 0
+    # A judged 0.0 (a hand that is clearly not the gesture) is a failure and does count.
+    tr = SeatTracker("S1-L", _three_second())
+    assert "no_progress" in run(tr, ticks(0, 3.2, 0.0, hand=True))
 
 
 def test_a_hand_cues_cannot_score_never_counts_as_no_progress():

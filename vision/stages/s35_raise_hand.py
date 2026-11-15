@@ -1,7 +1,12 @@
 """Raise-hand rule: a 0-1 confidence that each person has raised a hand.
 
 The hand must also be an open palm facing the camera
-(vision.gestures.hand_pose.open_palm_facing); otherwise the score is 0.
+(vision.gestures.hand_pose.open_palm_facing); a visible hand that is not scores 0.
+
+Missing evidence is not failure. When the shoulders or wrists are too faint for MediaPipe
+to judge, or the palm gate has no hand to look at, the match is not observable and its
+score is None. A wrist that can be seen and is not raised, or a raised hand that is not an
+open palm, is an observable failure: a low number that may count toward a stall.
 
 The score comes from the person's pose points (see raise_confidence). The
 status logic then requires the score to stay above the activity's thresholds,
@@ -13,7 +18,7 @@ from __future__ import annotations
 
 from vision import activities
 from vision.activities import TASKS
-from vision.gestures.hand_pose import open_palm_facing
+from vision.gestures.hand_pose import open_palm_check
 from vision.grouping import GROUPING
 from vision.perception import Match
 from vision.session_sync import frame_activity
@@ -27,8 +32,10 @@ FULL_RAISE_SHOULDER_WIDTHS = 1.0
 MIN_VISIBILITY = 0.5
 
 
-def raise_confidence(person) -> tuple[float, str]:
-    """People mode: how clearly a person's hand is raised, from 0 to 1.
+def assess_raise(person) -> tuple[float | None, str, str]:
+    """(score, explanation, reason_code) for how clearly a person's hand is raised.
+
+    score is None when the pose cannot judge it (see below); otherwise 0 to 1.
 
     Uses the person's MediaPipe pose points:
     * height: how far the higher wrist is above the shoulder line, measured in
@@ -47,18 +54,34 @@ def raise_confidence(person) -> tuple[float, str]:
     shoulder_y = (lsy + rsy) / 2
     width = max(person.shoulder_width, 1e-3)
     best, detail = 0.0, "no wrist above the shoulders"
+    judged = False  # at least one wrist (with both shoulders) was visible enough to judge
     for wrist in (LEFT_WRIST, RIGHT_WRIST):
         _, wy, wv = person.point(wrist)
         height = (shoulder_y - wy) / width  # image y grows downward
         geometry = min(max(height / FULL_RAISE_SHOULDER_WIDTHS, 0.0), 1.0)
         visibility = min(wv, lsv, rsv)
-        confidence = round(geometry, 3) if visibility >= MIN_VISIBILITY else 0.0
+        if visibility < MIN_VISIBILITY:
+            continue
+        judged = True
+        confidence = round(geometry, 3)
         if confidence > best:
             best = confidence
             detail = (
                 f"wrist {height:.1f} shoulder widths above shoulders, visibility {visibility:.2f}"
             )
-    return best, detail
+    if not judged:
+        return None, "shoulders or wrists too faint to judge", "missing_pose_landmarks"
+    return best, detail, "" if best > 0 else "observable_wrong"
+
+
+def raise_confidence(person) -> tuple[float, str]:
+    """How clearly a person's hand is raised, from 0 to 1, for display (the recognise stage).
+
+    Unlike assess_raise, a pose that cannot be judged reads 0 here: the label only needs a
+    number, and nothing here is scored as a task result.
+    """
+    score, detail = assess_raise(person)[:2]
+    return (0.0 if score is None else score), detail
 
 
 def highest_hand(hands):
@@ -84,15 +107,41 @@ class RaiseHandStage:
                 continue
             person = ctx.get("people", {}).get(pid)
             if person is None:
-                matches[pid] = Match(ACTIVITY_ID, None, "person not visible")
+                matches[pid] = Match(
+                    ACTIVITY_ID, None, "person not visible", reason_code="person_not_visible"
+                )
                 continue
-            score, detail = raise_confidence(person)
+            score, detail, code = assess_raise(person)
             hand = highest_hand(hands.get(pid, []))
+            if score is None:
+                matches[pid] = Match(
+                    ACTIVITY_ID, None, "cannot judge", detail=detail, hand=hand, reason_code=code
+                )
+                continue
             # A raised hand only counts as an open palm facing the camera, so a
-            # raised fist or thumbs-up never completes raise_hand.
-            if score > 0 and not open_palm_facing(hand):
-                score, detail = 0.0, f"{detail}; palm not open toward the camera"
-            matches[pid] = Match(ACTIVITY_ID, score, detail=detail, hand=hand)
+            # raised fist or thumbs-up never completes raise_hand. If the palm cannot be
+            # told (no hand found, or seen edge-on) there is nothing to judge it on:
+            # missing evidence, not a failure. Only a hand that is clearly not an open palm
+            # facing the camera scores 0.
+            if score > 0:
+                palm = open_palm_check(hand)
+                if palm is None:
+                    matches[pid] = Match(
+                        ACTIVITY_ID,
+                        None,
+                        "cannot tell the palm",
+                        detail=f"{detail}; palm evidence unavailable",
+                        hand=hand,
+                        reason_code="no_owned_hand" if hand is None else "palm_indeterminate",
+                    )
+                    continue
+                if not palm:
+                    score, detail, code = (
+                        0.0,
+                        f"{detail}; palm not open toward the camera",
+                        "observable_wrong",
+                    )
+            matches[pid] = Match(ACTIVITY_ID, score, detail=detail, hand=hand, reason_code=code)
 
     def draw(self, image, ctx) -> None:
         """Drawn by s90_overlay."""

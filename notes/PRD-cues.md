@@ -540,23 +540,10 @@ The agent picks only from this menu, and only suggests: repeat the instruction, 
 The teacher chooses Support needed (confirmed) or No support needed (dismissed).
 resolve_teacher_review(review_id, action) permits pending → confirmed/dismissed
 only, records server resolution time and rejects repeated resolution. Migration
-20261115000100 also records a `seat_review_marks` acknowledgement in that same
+20261115082639 also records a `seat_review_marks` acknowledgement in that same
 transaction for the active session and matching activity. Vision and the worker
-consume it to restart their timers. The dashboard suppresses the answered camera
-flag while vision catches up; a newer observation or a different task/session
-is not hidden by the old answer. Deploy this migration before the dashboard change.
+consume it to restart their timers.
 This records human attention decisions, not approval of an automatic intervention.
-
-With `web.flag_decisions` (default off), the teacher can also answer a camera flag
-before an agent review exists. `record_teacher_flag_decision` saves the actual
-confirmed/dismissed choice in `teacher_flag_decisions`, resolves any currently
-pending review for that same task with the chosen answer, and acknowledges the
-flag atomically. It never creates an agent review. The server verifies the session
-owner, active activity/revision and a recent unacknowledged flag. The browser sends
-an idempotency UUID and the observation it acted on; retrying the same request
-returns its original record without restarting timers again. Flag off: offer the
-single Mark as reviewed acknowledgement. Needs migration `20261115000200` after
-`20261115000100`; neither repair has been deployed during this implementation.
 
 ## 14. Optional future voice controls
 
@@ -777,18 +764,6 @@ teacher_reviews (
   status text,
   resolved_at timestamptz
 );
-
-teacher_flag_decisions (
-  id uuid primary key,
-  session_id uuid,
-  seat_id text,
-  activity_id text,
-  session_revision integer,
-  observed_at timestamptz,
-  decision text, -- confirmed / dismissed, distinct from the agent's assessment
-  decided_at timestamptz,
-  teacher_id uuid
-);
 ```
 
 `teacher_reviews` persists the existing typed `agent.teacher_review.TeacherReview`;
@@ -802,23 +777,14 @@ not intervention approval or an automatic instructional change. Server writes
 are required; the existing simulated-seat RLS pattern permits demo-only reads.
 The live runtime injects Supabase persistence; the in-memory store remains for offline use. Migration 004 provides authenticated resolution; demo scope permits authenticated users to resolve simulated-seat reviews, without teacher/session ownership authorization.
 
-Migration `20261115000100_review_resolution_marks.sql` adds an acknowledgement
+Migration `20261115082639_review_resolution_marks.sql` adds an acknowledgement
 trigger to the existing confirmed/dismissed transition. It retains the review's
 decision, evidence and response shape, and writes the server resolution timestamp
 and authenticated actor to the existing `seat_review_marks` row. No camera score,
 status or observation timestamp is changed. Answering a historical activity does
 not acknowledge the current activity. The trigger also covers intervention
-approval when that existing feature is enabled. This migration is local only;
-hosted deployment and Keith/Michelle/Evan contract sign-off remain to be recorded
-in the PR.
+approval when that existing feature is enabled. It is applied to the hosted project.
 
-`shared.contracts.TeacherFlagDecision` is authoritative for the immutable camera-only
-decision ledger. Migration `20261115000200_teacher_flag_decisions.sql` permits
-owner-scoped reads and authenticated RPC writes only; direct client writes and
-updates/deletes are rejected. Auth supplies `teacher_id`, the server supplies
-`decided_at`, and the observation identifies the session/person/activity/revision.
-The observed tuple is unique per session/person/revision/timestamp, as is the
-request UUID. No perception payload or raw camera data is stored in this ledger.
 Existing event types and existing review/mark response shapes are unchanged.
 This shared-table addition still needs Keith, Evan and Michelle's sign-off in the PR.
 
