@@ -271,6 +271,9 @@ class StatusStage:
                 tracking_valid=tracking_valid,
                 session_revision=session_revision,
                 task_score=score if tracking_valid else None,
+                # Judged only when tracked AND this task had evidence for this person: a score
+                # of 0.0 is a failure, None is missing evidence (never written as 0.0).
+                task_observable=score is not None and bool(tracking_valid),
                 expression_context=ExpressionContext(**expression) if expression else None,
             )
         )

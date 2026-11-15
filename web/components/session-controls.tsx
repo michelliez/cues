@@ -27,6 +27,7 @@ export function SessionControls({
   onActivity,
   teacherLoginEnabled = false,
   resetPeople = null,
+  onSnapshot,
 }: {
   client: SupabaseClient;
   station: string;
@@ -39,6 +40,9 @@ export function SessionControls({
     seatIds: readonly string[];
     onReset: (seatIds: string[]) => void;
   } | null;
+  /** The one authoritative session snapshot (null while loading or unavailable), shared with
+   * the dashboard so what it shows as current follows the same session, activity and revision. */
+  onSnapshot?: (snapshot: SessionSnapshot | null) => void;
 }) {
   const resetRef = useRef(resetPeople);
   useEffect(() => {
@@ -46,6 +50,15 @@ export function SessionControls({
   });
   const [user, setUser] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
+  const snapshotRef = useRef(onSnapshot);
+  useEffect(() => {
+    snapshotRef.current = onSnapshot;
+  });
+  // Every change, including a start, end or switch that this page just made, reaches the
+  // dashboard in the same commit; a reload (snapshot null) says "unknown", never "unchanged".
+  useEffect(() => {
+    snapshotRef.current?.(snapshot);
+  }, [snapshot]);
   const [selection, setSelection] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<
@@ -239,16 +252,18 @@ export function SessionControls({
         user,
       );
       if (epoch !== generation.current) return;
-      // A new revision already starts every person over in vision; close what was still open
-      // for them so the queue and the people row agree.
-      if (activityId !== null && !result.ended_at) await clearRequests(result.id);
-      if (epoch !== generation.current) return;
+      // Adopt the returned session now: rows from the old session, activity or revision stop
+      // counting at once, before the slower step below.
       const next = {
         ...snapshot,
         session: result.ended_at ? null : result,
         latest_session: result,
       };
       setSnapshot(next);
+      // A new revision already starts every person over in vision; close what was still open
+      // for them so the queue and the people row agree.
+      if (activityId !== null && !result.ended_at) await clearRequests(result.id);
+      if (epoch !== generation.current) return;
       // A successful change removes the Change button; keep focus nearby.
       if (activityId !== null && snapshot.session)
         requestAnimationFrame(() => selectRef.current?.focus());

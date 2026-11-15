@@ -250,3 +250,41 @@ export function healthSummary(health: CameraHealth): HealthSummary {
     return { tone: "quiet", label: "No updates" };
   return { tone: "good", label: "All good" };
 }
+
+export const VISION_UNAVAILABLE = "Local vision unavailable. Start Cues with ./scripts/dev.sh.";
+export const CAMERA_UNAVAILABLE = "Camera unavailable. Check the cable and that no other app is using it.";
+export const CAMERA_NO_FRAMES = "Camera not delivering frames.";
+export const FEED_PAUSED = "Observation updates paused. Reconnecting…";
+export const NO_OBSERVATIONS = "No current person observations.";
+
+/**
+ * What the student row says when no one is listed. Each fact comes from its own source:
+ * this laptop's vision service says whether it runs, the camera is open and frames are
+ * arriving; the observation feed says whether updates are being received. An absence of
+ * fresh rows alone never says the camera is off, and with a healthy camera it does not
+ * claim whether anyone is in view (the service reports no person count).
+ */
+export function emptyPeopleMessage({
+  vision,
+  localReadable,
+  feedConnected,
+}: {
+  /** The reading of this laptop's service, null until the first one. */
+  vision: LocalVisionReading | null;
+  /** False on a page that may not reach this laptop (a hosted page). */
+  localReadable?: boolean | null;
+  /** The observation feed (Supabase) is connected without error. */
+  feedConnected: boolean;
+}): string {
+  if (localReadable !== false) {
+    if (vision && !vision.reachable) return VISION_UNAVAILABLE;
+    if (vision?.reachable) {
+      if (!vision.cameraOpen) return CAMERA_UNAVAILABLE;
+      if (vision.frameAgeSeconds === null || vision.frameAgeSeconds > FRAME_STALE_SECONDS)
+        return CAMERA_NO_FRAMES;
+    }
+  }
+  if (!feedConnected) return FEED_PAUSED;
+  if (localReadable !== false && vision === null) return "Checking the camera…";
+  return NO_OBSERVATIONS;
+}

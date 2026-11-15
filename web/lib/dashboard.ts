@@ -207,6 +207,3 @@ export function seatViews(snapshot: Snapshot): SeatView[] {
     );
 }
 
-/** Seat presentation only; attention items come exclusively from teacher_reviews. */
-export const needsReview = (seat: SeatView) =>
-  seat.state?.status === "review" || seat.state?.status === "needs_help";

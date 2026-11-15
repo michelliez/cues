@@ -12,7 +12,8 @@ test("web.reset_people is registered and wired from the page to the session cont
   assert.match(dashboard, /resetPeopleEnabled\s*\?\s*\{/);
   // Everyone with an open request is closed through the existing Mark as reviewed path.
   assert.match(dashboard, /seatIds: reviewGroups\.map\(\(group\) => group\.seat_id\)/);
-  assert.match(dashboard, /onReset: \(ids\) => \{\s*\[\.\.\.ids, \.\.\.flaggedOnly\.map\(\(seat\) => seat\.id\)\]\.forEach\(\s*applyMarked,?\s*\);/);
+  // Only people with a pending review have anything to close (camera-only flags are gone).
+  assert.match(dashboard, /onReset: \(ids\) => ids\.forEach\(applyMarked\)/);
 });
 
 test("switching an activity closes open requests, and the refresh button restarts the activity", () => {

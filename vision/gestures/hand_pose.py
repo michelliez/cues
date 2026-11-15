@@ -82,15 +82,29 @@ def describe(landmarks: np.ndarray, handedness: str) -> str:
 OPEN_PALM_MIN = 0.5  # Gesture Recognizer Open_Palm score needed to call a hand open
 
 
-def open_palm_facing(hand) -> bool:
-    """True when a hand is an open palm facing the camera (the raise-hand pose).
+def open_palm_check(hand) -> bool | None:
+    """Is this hand an open palm facing the camera (the raise-hand pose)?
+
+    True or False when the hand gives evidence either way; None when it cannot be told:
+    there is no hand, or it is seen edge-on so palm and back cannot be separated. None is
+    missing evidence, not a wrong palm: callers must not turn it into False.
 
     Open: the Gesture Recognizer's Open_Palm score is at least OPEN_PALM_MIN
     (finger counting is used when a hand has no recogniser scores). Facing:
-    palm_side() reads "palm".
+    palm_side() reads "palm"; "back" is a clearly wrong hand.
     """
-    if hand is None or palm_side(hand.landmarks, hand.handedness) != "palm":
+    if hand is None:
+        return None
+    side = palm_side(hand.landmarks, hand.handedness)
+    if side == "side":
+        return None
+    if side != "palm":
         return False
     if hand.gestures:
         return hand.gestures.get("Open_Palm", 0.0) >= OPEN_PALM_MIN
     return is_open(hand.landmarks)
+
+
+def open_palm_facing(hand) -> bool:
+    """True only for an open palm facing the camera (display callers: None counts as no)."""
+    return open_palm_check(hand) is True
