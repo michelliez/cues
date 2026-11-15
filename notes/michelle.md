@@ -302,8 +302,11 @@ activate a different phone or consent attempt; consent timestamps/profile stay i
 
 The existing profile UI includes Send test notification only for current matching
 consent. POST /api/notifications/test verifies auth and accepts no body/identity.
-It invokes the same Python dynamic sender used by real reviews, using backend-only
-project credentials. “Target not allowed” returns activating with a retry message;
+It runs in Node on the web server (`web/lib/notification-send.ts`) with the same eligibility checks and
+the same guarded `record_teacher_notification_send` RPC as the agent's Python sender, and the
+provider call is the shared `web/lib/spectrum-send.ts` that the local `cues/src/notify.ts` also uses
+(no Python subprocess, so it works on Vercel). Backend-only project credentials come from the
+server environment. “Target not allowed” returns activating with a retry message;
 other failures record provider_failure/network_failure only. Pending reviews survive.
 Manual Photon website provisioning is still required; manual Supabase SQL is not.
 No CLI provisioning, admin system, static fallback, or station/session changes.
