@@ -4,7 +4,7 @@
 
 Hosted status was last checked against the Supabase migration ledger with
 the Supabase migration list on 2026-11-15: every migration below is applied, through
-`20261115082639_review_resolution_marks`. Every
+`20261115082802_teacher_flag_decisions`. Every
 migration is tested by a fresh replay on a local PostgreSQL with minimal Auth stubs
 (`supabase/tests/test_migration_replay.py`; this is SQL replay, not full Auth/Realtime
 emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL's `initdb`,
@@ -35,6 +35,7 @@ emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL
 | `001800_interventions` | The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below). Needed only by `agent.interventions` and `web.interventions` (both off) |
 | `20261115000100_task_observable` | `seat_state.task_observable` (see README) |
 | `20261115082639_review_resolution_marks` | Confirmed/dismissed review answers acknowledge the active camera task atomically, without changing the saved decision. Numbered by its hosted apply time because `000100` was already taken |
+| `20261115082802_teacher_flag_decisions` | **Applied but unused.** `teacher_flag_decisions` and `record_teacher_flag_decision` for teacher answers to camera-only flags. The dashboard no longer shows camera-only flags (main, 308beae), so nothing calls it. Kept so the repo matches the hosted history; dropping it needs a new migration |
 
 ## Review answers acknowledge the camera (migration 20261115082639)
 

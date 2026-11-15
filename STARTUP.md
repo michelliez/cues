@@ -101,9 +101,10 @@ Migration `20261115082639_review_resolution_marks.sql` makes a confirmed or dism
 answer acknowledge the active camera task in the same transaction, so vision puts the person back
 to working. It is applied to the hosted project; see `notes/supabase.md`.
 
-Every migration in `supabase/migrations/` (000100 through 001800, then `20261115000100_task_observable`
-and `20261115082639_review_resolution_marks`) is applied to the hosted project (checked
-2026-11-15). A new project applies them in filename order; see
+Every migration in `supabase/migrations/` (000100 through 001800, then `20261115000100_task_observable`,
+`20261115082639_review_resolution_marks` and `20261115082802_teacher_flag_decisions`) is applied to the
+hosted project (checked 2026-11-15). The last one is live but unused: the dashboard dropped
+camera-only flag decisions when it followed main. A new project applies them in filename order; see
 [notes/supabase.md](notes/supabase.md) for what each adds, how to apply them
 (`scripts/supabase-migrations.py list|dry-run|push`) and their tests. The launcher does not
 apply migrations or create demo data. Do not reapply the initial schema to the hosted project.

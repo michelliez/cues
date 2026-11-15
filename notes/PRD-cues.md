@@ -785,6 +785,15 @@ status or observation timestamp is changed. Answering a historical activity does
 not acknowledge the current activity. The trigger also covers intervention
 approval when that existing feature is enabled. It is applied to the hosted project.
 
+`teacher_flag_decisions` (migration `20261115082802`) is **applied to the hosted project but unused**:
+no `vision/`, `web/` or `agent/` code reads or writes it, since the dashboard shows a person only
+through an agent review. Columns: `id`, `session_id`, `seat_id`, `activity_id`, `session_revision`,
+`observed_at`, `decision` (confirmed/dismissed), `decided_at`, `teacher_id`. Reads are owner-only
+through RLS; the only writer is the authenticated `record_teacher_flag_decision` RPC, which can also
+resolve that task's pending `teacher_reviews` row and write `seat_review_marks`. Rows are never
+updated or deleted, and hold no images, expression labels or diagnoses. Removing it needs a new
+migration.
+
 Existing event types and existing review/mark response shapes are unchanged.
 This shared-table addition still needs Keith, Evan and Michelle's sign-off in the PR.
 
