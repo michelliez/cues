@@ -51,3 +51,21 @@ test("a To review card says the task, then not in view, then the request count",
     "Thumbs up · not in view · 3 requests",
   );
 });
+
+test("cards follow Attention: no 'Needs review' card while Attention is all clear", () => {
+  const flagged = person("1", "Needs Review", "review");
+  // Feed live, no request for them: the card does not contradict All clear.
+  const [clear] = stripEntries([flagged], new Set(), null, false, true);
+  assert.equal(clear.status, "Working");
+  assert.equal(clear.tone, "working");
+  // A pending request still reads Check in.
+  const [asked] = stripEntries([flagged], new Set(["1"]), null, false, true);
+  assert.equal(asked.status, CHECK_IN_LABEL);
+  assert.equal(asked.tone, "review");
+  // Feed not live (loading, dropped): keep the camera's own status.
+  const [unknown] = stripEntries([flagged], new Set(), null, false, false);
+  assert.equal(unknown.status, "Needs Review");
+  // Other statuses are untouched.
+  const [done] = stripEntries([person("2", "Completed", "done")], new Set(), null, false, true);
+  assert.equal(done.status, "Completed");
+});

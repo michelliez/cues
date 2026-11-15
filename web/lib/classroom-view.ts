@@ -20,24 +20,31 @@ export type StripSource = {
 
 export type StripEntry = StripSource & { status: string; selected: boolean };
 
+/** What a card says for someone the camera flags but Attention does not list. */
+export const CLEAR_LABEL = "Working";
+
 /**
  * One card per person the camera sees, in the order given (left to right in
  * the frame). Anyone with a pending request reads "Check in" in the review
- * tone; everyone else keeps their own status. The activity shows only when
- * the class is on more than one.
+ * tone. The cards follow Attention: while the review feed is live, nobody
+ * without a pending request reads "Needs review" (the camera's own flag), so a
+ * card never contradicts an "All clear". The activity shows only when the
+ * class is on more than one.
  */
 export function stripEntries(
   inView: readonly StripSource[],
   waiting: ReadonlySet<string>,
   selectedId: string | null,
   mixedActivities: boolean,
+  reviewsLive = false,
 ): StripEntry[] {
   return inView.map((person) => {
     const asked = waiting.has(person.id);
+    const clear = !asked && reviewsLive && person.tone === "review";
     return {
       ...person,
-      status: asked ? CHECK_IN_LABEL : person.label,
-      tone: asked ? "review" : person.tone,
+      status: asked ? CHECK_IN_LABEL : clear ? CLEAR_LABEL : person.label,
+      tone: asked ? "review" : clear ? "working" : person.tone,
       activity: mixedActivities ? person.activity : "",
       selected: selectedId === person.id,
     };

@@ -899,6 +899,7 @@ export default function Dashboard({
                 new Set(reviewGroups.map((group) => group.seat_id)),
                 selectedId,
                 mixedActivities,
+                reviewsLive,
               )}
               onSelect={(id) => setSelectedId(selectedId === id ? null : id)}
               onEscape={selectedId ? (card) => closeDetails(card) : undefined}
