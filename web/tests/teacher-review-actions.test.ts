@@ -3,6 +3,8 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTeacherReview } from "../lib/teacher-review-actions.ts";
 import type { TeacherReview } from "../lib/teacher-reviews.ts";
+import { reviewQueue, withResolvedReviewMark } from "../lib/classroom-view.ts";
+import type { SeatState } from "../lib/dashboard.ts";
 const review: TeacherReview = {
   id: "11111111-1111-4111-8111-111111111111",
   session_id: "00000000-0000-4000-8000-000000000001",
@@ -81,4 +83,40 @@ test("failure, conflict, missing RPC and malformed acknowledgements never resolv
     );
     assert.equal(review.status, "pending");
   }
+});
+
+for (const status of ["confirmed", "dismissed"] as const) {
+  test(`${status} clears the old camera flag while preserving another person's request`, async () => {
+    const observation: SeatState = {
+      seat_id: review.seat_id, session_id: review.session_id, activity_id: review.activity_id,
+      status: "review", task_score: 0, updated_at: "2026-11-14T12:00:59Z",
+    };
+    const mock = client([{ ...review, status, resolved_at: "2026-11-14T12:01:00Z" }]);
+    const saved = await resolveTeacherReview(mock.value, review, status);
+    const marked = withResolvedReviewMark(new Set(), saved, observation);
+    const queue = reviewQueue({
+      enabled: true, live: true, people: [{ id: review.seat_id }],
+      flagged: () => true, askedSeatIds: ["S1-P2"], marked,
+    });
+    assert.deepEqual(queue, { flagged: [], count: 1 });
+    assert.equal(saved.status, status);
+    assert.deepEqual([...marked], [review.seat_id]);
+    assert.equal(observation.status, "review"); // Never fake a new vision observation.
+    assert.equal(reviewQueue({ enabled: false, live: true, people: [], flagged: () => true,
+      askedSeatIds: ["S1-P2"], marked }).count, 1);
+  });
+}
+
+test("an old answer cannot hide another session, task, person or a fresh stall", () => {
+  const saved = { ...review, status: "dismissed" as const, resolved_at: "2026-11-14T12:01:00Z" };
+  const observation: SeatState = {
+    seat_id: review.seat_id, session_id: review.session_id, activity_id: review.activity_id,
+    status: "review", task_score: 0, updated_at: "2026-11-14T12:00:59Z",
+  };
+  for (const state of [null, { ...observation, session_id: "another-session" },
+    { ...observation, activity_id: "thumbs_up" }, { ...observation, seat_id: "S1-P2" },
+    { ...observation, updated_at: "2026-11-14T12:02:00Z" }]) {
+    assert.deepEqual([...withResolvedReviewMark(new Set(["S1-P2"]), saved, state)], ["S1-P2"]);
+  }
+  assert.equal(withResolvedReviewMark(new Set(), review, observation).size, 0);
 });

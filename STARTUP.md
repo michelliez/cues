@@ -97,6 +97,21 @@ Each failed send logs a safe reason (no phone, secret or provider detail).
 
 ## Database and demo prerequisites
 
+Local repair migration `20261115000100_review_resolution_marks.sql` must be
+deployed before using the dashboard's review-reset fix. It makes a confirmed or
+dismissed review answer acknowledge the active camera task atomically. It has
+not been applied to the hosted project; see `notes/supabase.md` for rollout and
+local verification. The existing RPC signature and vision/worker readers remain
+compatible.
+
+Camera-only support choices additionally require local migration
+`20261115000200_teacher_flag_decisions.sql`, applied after the review-reset repair.
+It has not been applied to the hosted project. `web.flag_decisions` defaults off:
+the UI offers Mark as reviewed until the migration and live RPC are verified.
+Then set `CUES_FLAG_WEB_FLAG_DECISIONS=1` in the web environment and rebuild/restart
+to enable distinct, durable Support needed / No support needed answers. See
+`notes/bugfix-implementation-log.md` for the implementation and verification record.
+
 The first 20 migrations in `supabase/migrations/` (000100 through 001700) are applied to the hosted
 project. Migration 001800 (approved interventions) is written and tested but **not applied**; it is
 needed only by the `agent.interventions` and `web.interventions` flags, which are off. A new project applies them in filename order; see

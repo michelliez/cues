@@ -3,8 +3,8 @@ import { parseTeacherReviews, type TeacherReview } from "./teacher-reviews.ts";
 
 export type ReviewResolution = "confirmed" | "dismissed";
 
-/** Trusted action boundary: backend maps confirmed/dismissed to the existing store methods.
- * Deployment must authorize teacher scope and enforce the pending-only transition.
+/** The authenticated resolution RPC saves the answer. Migration 20261115000100
+ * also records the live task's camera acknowledgement in the same transaction.
  */
 export async function resolveTeacherReview(
   client: SupabaseClient,

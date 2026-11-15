@@ -40,6 +40,7 @@ import {
   reviewQueue,
   stripEntries,
   unexplainedDrops,
+  withResolvedReviewMark,
   writeMarked,
 } from "@/lib/classroom-view";
 import {
@@ -125,6 +126,7 @@ export default function Dashboard({
   interventionsEnabled = false,
   resetPeopleEnabled = false,
   reviewWaitingEnabled = false,
+  flagDecisionsEnabled = false,
 }: {
   /** "classroom" (the default) or "review", the To review page. */
   view?: "classroom" | "review";
@@ -153,6 +155,8 @@ export default function Dashboard({
   resetPeopleEnabled?: boolean;
   /** web.review_waiting: To review also lists people the camera flagged who have no request yet. */
   reviewWaitingEnabled?: boolean;
+  /** web.flag_decisions: durable teacher answers to camera-only flags; needs migration 20261115000200. */
+  flagDecisionsEnabled?: boolean;
 }) {
   const [observationNow, setObservationNow] = useState<number | null>(null);
   useEffect(() => {
@@ -612,6 +616,11 @@ export default function Dashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settling]);
   const resolved = (review: TeacherReview) => {
+    setMarkedSeats((previous) => withResolvedReviewMark(
+      previous,
+      review,
+      seats.find((seat) => seat.id === review.seat_id)?.state ?? null,
+    ));
     resolvedReviewIds.current.add(review.id);
     setReviews((state) => ({
       ...state,
@@ -623,17 +632,19 @@ export default function Dashboard({
   // the same table, so they leave the others too) and let vision reset them to working.
   // Remember the mark until vision moves them out of review, so the row (which may remount in
   // the other group) can't offer it twice, and drop their open requests from the queue now.
-  const applyMarked = (marked: string) => {
+  const applyMarked = (marked: string, scope?: { session_id: string; activity_id: string }) => {
     setMarkedSeats((previous) => new Set(previous).add(marked));
     setReviews((state) => {
+      const matches = (item: TeacherReview) => item.seat_id === marked &&
+        (!scope || (item.session_id === scope.session_id && item.activity_id === scope.activity_id));
       const closed = (state.reviews ?? []).filter(
-        (item) => item.seat_id === marked,
+        matches,
       );
       for (const item of closed) resolvedReviewIds.current.add(item.id);
       return {
         ...state,
         reviews:
-          state.reviews?.filter((item) => item.seat_id !== marked) ?? null,
+          state.reviews?.filter((item) => !matches(item)) ?? null,
       };
     });
   };
@@ -655,10 +666,13 @@ export default function Dashboard({
       />
     ) : null;
   // Support needed / No support needed for a flagged person with no request:
-  // either answer closes the flag (as Mark as reviewed does) and they leave
-  // Attention; nothing is written as a review for them.
-  const flagDecisions = (sessionId: string | null, seatId: string) =>
-    markedSeats.has(seatId) ? (
+  // save the chosen answer separately from agent reviews. Until the migration
+  // is rolled out, the flag-off path offers the existing single acknowledgement.
+  const flagDecisions = (sessionId: string | null, seatId: string) => {
+    if (!flagDecisionsEnabled) return markReviewedButton(sessionId, seatId);
+    const observation = seats.find((seat) => seat.id === seatId)?.state;
+    if (!observation || observation.session_id !== sessionId) return null;
+    return markedSeats.has(seatId) ? (
       <p className="person-note" role="status">
         Saved. They’ll show as working again in a moment.
       </p>
@@ -666,17 +680,17 @@ export default function Dashboard({
       <FlagDecisionButtons
         key={seatId}
         client={client}
-        sessionId={sessionId}
-        seatId={seatId}
-        onDecided={(decided) => {
-          applyMarked(decided);
-          if (selectedId === decided) setSelectedId(null);
+        observation={observation}
+        onDecided={(decision) => {
+          applyMarked(decision.seat_id, decision);
+          if (selectedId === decision.seat_id) setSelectedId(null);
           requestAnimationFrame(() =>
             (view === "review" ? pageHeading : listHeading).current?.focus(),
           );
         }}
       />
     ) : null;
+  };
   const row = (
     seatId: string,
     content: React.ReactNode,
@@ -807,7 +821,7 @@ export default function Dashboard({
                               // their "No suggestion yet" card goes with everyone else's.
                               onReset: (ids) => {
                                 [...ids, ...flaggedOnly.map((seat) => seat.id)].forEach(
-                                  applyMarked,
+                                  (id) => applyMarked(id),
                                 );
                                 // Everyone starts over: nobody is still "just lost".
                                 setDroppedFlagged([]);

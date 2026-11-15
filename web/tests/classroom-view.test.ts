@@ -64,7 +64,7 @@ test("Attention lists camera-flagged people as rows until the teacher answers", 
   assert.match(dash, /catchingUp\s*\?\s*"Marked as reviewed\. The camera will catch up in a moment\."\s*:\s*"All clear\. Cues will ask when someone may need you\."/);
 });
 
-test("a flagged person without a request gets Support needed / No support needed", async () => {
+test("a flagged person without a request gets durable choices behind the rollout flag", async () => {
   const { readFileSync } = await import("node:fs");
   const dash = readFileSync(new URL("../components/dashboard.tsx", import.meta.url), "utf8");
   assert.match(dash, /flaggedIdSet\.has\(seatId\) && pending\.length === 0\s*\? flagDecisions/);
@@ -74,8 +74,10 @@ test("a flagged person without a request gets Support needed / No support needed
   const decisions = button.slice(button.indexOf("export function FlagDecisionButtons"));
   assert.match(decisions, /resolutionLabels\.confirmed/);
   assert.match(decisions, /resolutionLabels\.dismissed/);
-  // Either answer closes the flag; nothing is written as a review.
-  assert.match(decisions, /markSeatReviewed\(client, sessionId, seatId\)/);
+  // Preserve the actual choice, without inventing an agent review.
+  assert.match(decisions, /recordFlagDecision\(client, request\.current\.observation, choice, request\.current\.id\)/);
+  assert.doesNotMatch(decisions, /markSeatReviewed\(/);
+  assert.match(dash, /if \(!flagDecisionsEnabled\) return markReviewedButton\(sessionId, seatId\)/);
   assert.doesNotMatch(decisions, /resolve_teacher_review|resolveTeacherReview/);
   assert.ok(decisions.includes("locked.current = true")); // a double click saves once
 });

@@ -2,9 +2,10 @@
 
 ## Status
 
-All 20 migrations below are applied to the hosted project and none are pending (checked against
-the Supabase migration ledger with `scripts/supabase-migrations.py list` on 2026-11-14). Every
-migration passes a fresh replay on a local PostgreSQL with minimal Auth stubs
+Hosted status was last checked against the Supabase migration ledger with
+`scripts/supabase-migrations.py list` on 2026-11-14: migrations through 017 are
+applied. Migration 018 and the 20261115000100/20261115000200 repairs are local only. Every
+migration is tested by a fresh replay on a local PostgreSQL with minimal Auth stubs
 (`supabase/tests/test_migration_replay.py`; this is SQL replay, not full Auth/Realtime
 emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL's `initdb`,
 `pg_ctl` and `psql` on the PATH and are run by the `supabase` CI workflow.
@@ -32,6 +33,74 @@ emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL
 | `001600_station_flags` | `read_station_flags` for the dashboard timeline's data |
 | `001700_station_writers` | One camera per station (`station_writers`, `claim_station_writer`, `release_station_writer`) |
 | `001800_interventions` | **Written, not applied to the hosted project.** The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below). Needed only by `agent.interventions` and `web.interventions` (both off) |
+| `20261115000100_review_resolution_marks` | **Local only, not applied.** Confirmed/dismissed review answers acknowledge the active camera task atomically, without changing the saved decision |
+| `20261115000200_teacher_flag_decisions` | **Local only, not applied.** Immutable camera-only teacher decisions and the atomic `record_teacher_flag_decision` RPC; needed by `web.flag_decisions` (off) |
+
+## Camera-only decisions (local migration 20261115000200)
+
+`teacher_flag_decisions` records the teacher's chosen confirmed/dismissed answer
+when vision flagged someone before an agent review existed. The canonical model
+is `shared.contracts.TeacherFlagDecision`; PRD §17 lists its fields. It stores no
+agent rationale, invented review, expression context or images.
+
+`record_teacher_flag_decision(decision_id, session_id, seat_id, activity_id,
+expected_revision, observed_at, decision)` returns one JSON record. It verifies
+the signed-in session owner and person/station membership, the active activity
+and revision, and a currently flagged observation. Both the submitted timestamp
+and latest observation must be within 30 seconds, with at most 5 seconds of
+future camera-clock tolerance for the submitted timestamp. It rejects an older
+already-acknowledged flag. Heartbeats may advance between rendering and submission;
+an exact latest-row timestamp match is deliberately not required.
+
+The RPC saves the ledger record, resolves currently pending reviews for that task
+with the chosen answer, and writes the existing camera/worker mark in one
+transaction. Other activities' requests are untouched. An acknowledgement failure
+rolls back the answer and any review transitions. Replaying a successful UUID with
+the identical context/choice returns its existing record, even after session end,
+without another mark. Changing a replay's context/choice is rejected. Concurrent
+decisions serialize with a transaction advisory lock on the session/person; they
+do not lock or update vision's observation row. The existing review-before-mark
+lock order is retained. A unique observation tuple prevents two request IDs from
+answering the same observation twice.
+
+Browser writes are RPC-only; authenticated users read decisions of sessions they
+own, while service-role access is read-only. Updates/deletes are prohibited. No
+new Realtime subscription or history UI is introduced. Reviews created after the
+transaction are not fabricated or automatically assigned this earlier answer.
+
+Rollout: apply migrations in filename order, verify the hosted RPC, then enable
+`CUES_FLAG_WEB_FLAG_DECISIONS=1` (or the browser-safe `NEXT_PUBLIC_` form) in the web
+environment and rebuild/restart. The flag defaults off; its fallback offers the
+existing single Mark as reviewed action. If the RPC is missing or a request fails,
+the enabled UI reports the error and does not fall back to discarding the choice.
+The request UUID and original observation survive retries in the mounted button.
+
+Verification: SQL tests are in `supabase/tests/test_review_marks.py`; browser
+contract/fallback tests are in `web/tests/flag-decisions.test.ts`. Local results and
+rollout limitations are recorded in `bugfix-implementation-log.md`. Hosted
+deployment, signed-in browser/camera acceptance and team sign-off remain pending.
+
+## Review answers acknowledge the camera (local migration 20261115000100)
+
+Deploy `20261115000100_review_resolution_marks.sql` before the dashboard change.
+The existing `resolve_teacher_review` signature, owner checks and returned review
+stay unchanged. An after-update trigger writes the resolution timestamp and
+authenticated actor into `seat_review_marks` when the review's session is active
+and its activity is still current. Both confirmed and dismissed acknowledge the
+flag, while retaining their distinct decision values. If the mark fails, the
+answer rolls back too. Existing/newer marks are never moved backwards, other
+pending reviews are left alone, and no vision observation is fabricated.
+`mark_seat_reviewed` acquires review rows before the mark row, matching the answer
+path so concurrent Mark as reviewed and review answers cannot deadlock on those
+two resources.
+
+The same trigger covers confirmation by the optional intervention-approval path.
+Automatic expiry and Mark as reviewed keep their existing behavior. This is a
+repair to the existing review workflow under `web.teacher_review_actions`, with
+no new feature flag or data fields. Vision and the worker already consume marks.
+
+Tests: `supabase/tests/test_review_marks.py`, `web/tests/teacher-review-actions.test.ts`.
+Hosted deployment and team sign-off have not been performed.
 
 ## Reconciled migration history
 

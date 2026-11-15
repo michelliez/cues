@@ -2,6 +2,29 @@
  * functions so they are tested without rendering. Statuses come from the
  * backend; nothing here scores or ranks a student. */
 
+import type { SeatState } from "./dashboard.ts";
+import type { TeacherReview } from "./teacher-reviews.ts";
+
+/** Keep an answered camera flag out of the queue while vision consumes the
+ * transaction's review mark. A different task/session or newer observation
+ * must not be hidden by an old answer. */
+export function withResolvedReviewMark(
+  marked: ReadonlySet<string>,
+  review: TeacherReview,
+  observation: SeatState | null,
+): Set<string> {
+  const next = new Set(marked);
+  if (
+    (review.status === "confirmed" || review.status === "dismissed") &&
+    review.resolved_at &&
+    observation?.seat_id === review.seat_id &&
+    observation.session_id === review.session_id &&
+    observation.activity_id === review.activity_id &&
+    Date.parse(observation.updated_at) <= Date.parse(review.resolved_at)
+  ) next.add(review.seat_id);
+  return next;
+}
+
 export type StripTone = "working" | "done" | "review" | "quiet";
 
 /** The word on a student's own card while Cues has asked the teacher about

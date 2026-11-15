@@ -26,6 +26,7 @@ export default async function ReviewPage() {
         visionStationConfigEnabled={isEnabled("web.vision_station_config")}
         interventionsEnabled={isEnabled("web.interventions")}
         reviewWaitingEnabled={isEnabled("web.review_waiting")}
+        flagDecisionsEnabled={isEnabled("web.flag_decisions")}
       />
     </div>
   );

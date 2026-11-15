@@ -12,7 +12,7 @@ test("web.reset_people is registered and wired from the page to the session cont
   assert.match(dashboard, /resetPeopleEnabled\s*\?\s*\{/);
   // Everyone with an open request is closed through the existing Mark as reviewed path.
   assert.match(dashboard, /seatIds: reviewGroups\.map\(\(group\) => group\.seat_id\)/);
-  assert.match(dashboard, /onReset: \(ids\) => \{\s*\[\.\.\.ids, \.\.\.flaggedOnly\.map\(\(seat\) => seat\.id\)\]\.forEach\(\s*applyMarked,?\s*\);/);
+  assert.match(dashboard, /onReset: \(ids\) => \{\s*\[\.\.\.ids, \.\.\.flaggedOnly\.map\(\(seat\) => seat\.id\)\]\.forEach\(\s*\(id\) => applyMarked\(id\),?\s*\);/);
 });
 
 test("switching an activity closes open requests, and the refresh button restarts the activity", () => {

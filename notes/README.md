@@ -8,6 +8,9 @@ Everything except `README.md`, `STARTUP.md` and the tool-bound files (`CLAUDE.md
 |---|---|
 | [PRD-cues.md](PRD-cues.md) | Product requirements. §17 is the shared data contract. |
 | [outstanding-work.md](outstanding-work.md) | What is still open, ranked P0 to P3. |
+| [bugfix-implementation-log.md](bugfix-implementation-log.md) | Sequential bug-fix scope, decisions, verification gates and rollout status. Read before continuing these fixes. |
+| [backend-audit-2026-11-15.md](backend-audit-2026-11-15.md) | Original backend/runtime findings and the evidence behind the remediation work. |
+| [agent-information-audit-2026-11-15.md](agent-information-audit-2026-11-15.md) | Actual agent execution, hardcoded boundaries, missing context and information-delivery gaps. |
 | [pipeline-audit.md](pipeline-audit.md) | Every connection from camera to teacher, and its limits. |
 | [archive/TEAM_WORKFLOW.md](archive/TEAM_WORKFLOW.md) | Branches, ownership, merging. |
 

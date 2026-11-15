@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { markSeatReviewed } from "@/lib/seat-review";
 import { resolutionLabels } from "@/lib/teacher-reviews";
+import type { SeatState } from "@/lib/dashboard";
+import { recordFlagDecision, type TeacherFlagDecision } from "@/lib/flag-decisions";
 
 /**
  * "Mark as reviewed" for a flagged child. It closes their open review requests on every
@@ -86,21 +88,21 @@ export function MarkReviewedButton({
 /**
  * Support needed / No support needed for a person the camera flagged before Cues
  * has asked about them (web.review_waiting). There is no review request to
- * resolve, so either answer closes the flag the same way Mark as reviewed does:
- * the person leaves Attention and vision puts them back to working.
+ * resolve. Save the actual answer and acknowledge the flag atomically through
+ * the dedicated RPC. This never creates a synthetic agent review.
  */
 export function FlagDecisionButtons({
   client,
-  sessionId,
-  seatId,
+  observation,
   onDecided,
 }: {
   client: SupabaseClient;
-  sessionId: string;
-  seatId: string;
-  onDecided?: (seatId: string) => void;
+  observation: SeatState;
+  onDecided?: (decision: TeacherFlagDecision) => void;
 }) {
   const locked = useRef(false);
+  const request = useRef<{ id: string; observation: SeatState } | null>(null);
+  const [done, setDone] = useState(false);
   const [saving, setSaving] = useState<"confirmed" | "dismissed" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
@@ -111,13 +113,16 @@ export function FlagDecisionButtons({
     return () => data.subscription.unsubscribe();
   }, [client]);
   async function decide(choice: "confirmed" | "dismissed") {
-    if (!authenticated || locked.current) return;
+    if (!authenticated || locked.current || done) return;
     locked.current = true;
     setSaving(choice);
     setError(null);
     try {
-      await markSeatReviewed(client, sessionId, seatId);
-      onDecided?.(seatId);
+      // Keep the request identity and observation across retries and camera heartbeats.
+      request.current ??= { id: crypto.randomUUID(), observation: { ...observation } };
+      const saved = await recordFlagDecision(client, request.current.observation, choice, request.current.id);
+      setDone(true);
+      onDecided?.(saved);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Couldn’t save that. Try again.",
@@ -133,7 +138,7 @@ export function FlagDecisionButtons({
         <button
           type="button"
           className="ws-pill is-dark"
-          disabled={!authenticated || saving !== null}
+          disabled={!authenticated || saving !== null || done}
           onClick={() => void decide("confirmed")}
         >
           {saving === "confirmed" ? "Saving…" : resolutionLabels.confirmed}
@@ -141,7 +146,7 @@ export function FlagDecisionButtons({
         <button
           type="button"
           className="ws-pill"
-          disabled={!authenticated || saving !== null}
+          disabled={!authenticated || saving !== null || done}
           onClick={() => void decide("dismissed")}
         >
           {saving === "dismissed" ? "Saving…" : resolutionLabels.dismissed}

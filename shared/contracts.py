@@ -195,3 +195,19 @@ class Session(_Contract):
     started_at: AwareDatetime
     ended_at: AwareDatetime | None
     revision: Annotated[int, Field(ge=0, strict=True)]
+
+
+class TeacherFlagDecision(_Contract):
+    """A teacher's recorded camera-flag answer; never a fabricated agent review."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
+
+    id: UUID
+    session_id: UUID
+    seat_id: Identifier
+    activity_id: Identifier
+    session_revision: SessionRevision
+    observed_at: AwareDatetime
+    decision: Literal["confirmed", "dismissed"]
+    decided_at: AwareDatetime
+    teacher_id: UUID
