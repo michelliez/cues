@@ -20,31 +20,24 @@ export type StripSource = {
 
 export type StripEntry = StripSource & { status: string; selected: boolean };
 
-/** What a card says for someone the camera flags but Attention does not list. */
-export const CLEAR_LABEL = "Working";
-
 /**
  * One card per person the camera sees, in the order given (left to right in
  * the frame). Anyone with a pending request reads "Check in" in the review
- * tone. The cards follow Attention: while the review feed is live, nobody
- * without a pending request reads "Needs review" (the camera's own flag), so a
- * card never contradicts an "All clear". The activity shows only when the
- * class is on more than one.
+ * tone; everyone else keeps their own status. The activity shows only when
+ * the class is on more than one.
  */
 export function stripEntries(
   inView: readonly StripSource[],
   waiting: ReadonlySet<string>,
   selectedId: string | null,
   mixedActivities: boolean,
-  reviewsLive = false,
 ): StripEntry[] {
   return inView.map((person) => {
     const asked = waiting.has(person.id);
-    const clear = !asked && reviewsLive && person.tone === "review";
     return {
       ...person,
-      status: asked ? CHECK_IN_LABEL : clear ? CLEAR_LABEL : person.label,
-      tone: asked ? "review" : clear ? "working" : person.tone,
+      status: asked ? CHECK_IN_LABEL : person.label,
+      tone: asked ? "review" : person.tone,
       activity: mixedActivities ? person.activity : "",
       selected: selectedId === person.id,
     };
@@ -65,4 +58,39 @@ export function reviewIssueLine(
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Names for a short sentence: "Keith", "Keith and Evan", "Keith, Evan and 2 more". */
+export function nameList(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  const more = names.length - 2;
+  return `${names[0]}, ${names[1]} and ${more} more`;
+}
+
+/**
+ * What Attention (and the To review page) says when Cues has no pending
+ * request. It only says "All clear" when the camera agrees: if the camera has
+ * flagged someone in view who has no request (a near-miss, or the agent chose
+ * to keep watching, or its call failed), it names them instead, so the
+ * teacher still sees the child's camera status and the cards never contradict
+ * an "All clear".
+ */
+export function clearLine(
+  flagged: readonly string[],
+  page: "classroom" | "review",
+): { text: string; flagged: boolean } {
+  if (flagged.length === 0)
+    return {
+      text:
+        page === "review"
+          ? "All clear. No one needs you right now."
+          : "All clear. Cues will ask when someone may need you.",
+      flagged: false,
+    };
+  const who = nameList(flagged);
+  return {
+    text: `No requests yet. The camera flagged ${who} for a look.`,
+    flagged: true,
+  };
 }

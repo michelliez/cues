@@ -31,7 +31,11 @@ import { CameraHealthStrip } from "@/components/camera-health-strip";
 import { ReviewCompanion } from "@/components/review-companion";
 import { ReviewCard } from "@/components/review-card";
 import { StudentStrip } from "@/components/student-strip";
-import { reviewIssueLine, stripEntries } from "@/lib/classroom-view";
+import {
+  clearLine,
+  reviewIssueLine,
+  stripEntries,
+} from "@/lib/classroom-view";
 import {
   CAMERA_CONFLICT_MESSAGE,
   cameraConflict,
@@ -345,6 +349,15 @@ export default function Dashboard({
   const inView = seats.filter((seat) =>
     inCameraView(seat.state, observationOptions),
   );
+  // In view and flagged by the camera, but with no request from Cues: Attention
+  // names them instead of saying "All clear" (the cards show their status).
+  const cameraFlagged = inView
+    .filter(
+      (seat) => present(seat).needsReview && reviewsFor(seat.id).length === 0,
+    )
+    .map((seat) => seat.display_name);
+  const clearClassroom = clearLine(cameraFlagged, "classroom");
+  const clearReview = clearLine(cameraFlagged, "review");
   const cameraReporting = seats.some((seat) =>
     isFresh(seat.state, observationOptions),
   );
@@ -764,11 +777,14 @@ export default function Dashboard({
                   </ol>
                 ) : (
                   reviewNotice ? null : (
-                    <p className="list-clear review-clear" role="status">
+                    <p
+                      className={`list-clear review-clear${reviewsLive && clearReview.flagged ? " is-flagged" : ""}`}
+                      role="status"
+                    >
                       {!reviewsEnabled || configurationError
                         ? "Cues will list people here when someone may need you."
                         : reviewsLive
-                          ? "All clear. No one needs you right now."
+                          ? clearReview.text
                           : "Checking…"}
                     </p>
                   )
@@ -869,11 +885,14 @@ export default function Dashboard({
                   </ul>
                 ) : (
                   reviewNotice ? null : (
-                    <p className="panel-empty" role="status">
+                    <p
+                      className={`panel-empty${reviewsLive && clearClassroom.flagged ? " is-flagged" : ""}`}
+                      role="status"
+                    >
                       {!reviewsEnabled || configurationError
                         ? "Cues will ask here when someone may need you."
                         : reviewsLive
-                          ? "All clear. Cues will ask when someone may need you."
+                          ? clearClassroom.text
                           : "Checking…"}
                     </p>
                   )
@@ -899,7 +918,6 @@ export default function Dashboard({
                 new Set(reviewGroups.map((group) => group.seat_id)),
                 selectedId,
                 mixedActivities,
-                reviewsLive,
               )}
               onSelect={(id) => setSelectedId(selectedId === id ? null : id)}
               onEscape={selectedId ? (card) => closeDetails(card) : undefined}

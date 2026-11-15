@@ -775,6 +775,15 @@ div.ws-row {
   font-size: 14px;
   font-weight: 500;
 }
+/* Not all clear: the camera flagged someone Cues has not asked about. */
+.dashboard-shell .list-clear.is-flagged {
+  background: var(--ws-review-soft);
+  color: var(--ws-review);
+}
+.dashboard-shell .panel-empty.is-flagged {
+  color: var(--ws-review);
+  font-weight: 500;
+}
 .dashboard-shell .list-clear + .list-label {
   margin-top: 18px;
 }

@@ -52,20 +52,25 @@ test("a To review card says the task, then not in view, then the request count",
   );
 });
 
-test("cards follow Attention: no 'Needs review' card while Attention is all clear", () => {
-  const flagged = person("1", "Needs Review", "review");
-  // Feed live, no request for them: the card does not contradict All clear.
-  const [clear] = stripEntries([flagged], new Set(), null, false, true);
-  assert.equal(clear.status, "Working");
-  assert.equal(clear.tone, "working");
-  // A pending request still reads Check in.
-  const [asked] = stripEntries([flagged], new Set(["1"]), null, false, true);
-  assert.equal(asked.status, CHECK_IN_LABEL);
-  assert.equal(asked.tone, "review");
-  // Feed not live (loading, dropped): keep the camera's own status.
-  const [unknown] = stripEntries([flagged], new Set(), null, false, false);
-  assert.equal(unknown.status, "Needs Review");
-  // Other statuses are untouched.
-  const [done] = stripEntries([person("2", "Completed", "done")], new Set(), null, false, true);
-  assert.equal(done.status, "Completed");
+test("Attention only says All clear when the camera agrees", async () => {
+  const { clearLine, nameList } = await import("../lib/classroom-view.ts");
+  assert.deepEqual(clearLine([], "classroom"), {
+    text: "All clear. Cues will ask when someone may need you.",
+    flagged: false,
+  });
+  assert.equal(clearLine([], "review").text, "All clear. No one needs you right now.");
+  const one = clearLine(["Keith"], "classroom");
+  assert.equal(one.flagged, true);
+  assert.equal(one.text, "No requests yet. The camera flagged Keith for a look.");
+  assert.doesNotMatch(one.text, /All clear/);
+  assert.equal(nameList(["Keith", "Evan"]), "Keith and Evan");
+  assert.equal(nameList(["Keith", "Evan", "Eric", "Michelle"]), "Keith, Evan and 2 more");
+});
+
+test("the dashboard names camera-flagged people instead of saying All clear", async () => {
+  const { readFileSync } = await import("node:fs");
+  const dash = readFileSync(new URL("../components/dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dash, /present\(seat\)\.needsReview && reviewsFor\(seat\.id\)\.length === 0/);
+  assert.ok(!dash.includes('"All clear. Cues will ask when someone may need you."'));
+  assert.ok(!dash.includes('"All clear. No one needs you right now."'));
 });
