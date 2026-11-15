@@ -175,7 +175,7 @@
   },
   "vision.flag_on_time_on_task": {
     "description": "Flag a child as needing review after the no-progress wait of plain time on task (tracking loss excluded), even when Cues could not score their hand. Off: only judged time counts (PR #101).",
-    "default": true,
+    "default": false,
     "owner": "evan",
     "ticket": "PR-104"
   },
