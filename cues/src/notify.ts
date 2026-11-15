@@ -1,5 +1,5 @@
-import { Spectrum } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers/imessage";
+// The provider logic is shared with the hosted endpoint: web/lib/spectrum-send.ts.
+import { sendSpectrumMessage } from "../../web/lib/spectrum-send.ts";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -23,34 +23,20 @@ async function main() {
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
   const { message, destination } = JSON.parse(input);
-  if (typeof message !== "string" || message.length > 500) throw new Error("Invalid message");
   const phone = process.env.CUES_USE_STATIC_TEACHER_PHONE === "1"
     ? process.env.SPECTRUM_TEACHER_PHONE : destination;
-  if (typeof phone !== "string" || !/^\+[1-9]\d{7,14}$/.test(phone))
-    throw new Error("Valid E.164 teacher destination required");
-  if (!phone) throw new Error("Teacher destination missing");
-  if (!process.env.SPECTRUM_PROJECT_ID || !process.env.SPECTRUM_PROJECT_SECRET)
-    throw new Error("Spectrum project credentials missing");
   diagnostic(JSON.stringify({ cuesNotification: true, config: {
-    nestedEnvLoaded: true, projectIdPresent: true, projectSecretPresent: true,
-    teacherPresent: true, explicitSender: Boolean(process.env.SPECTRUM_SENDER_PHONE),
+    nestedEnvLoaded: true, projectIdPresent: Boolean(process.env.SPECTRUM_PROJECT_ID),
+    projectSecretPresent: Boolean(process.env.SPECTRUM_PROJECT_SECRET),
+    teacherPresent: Boolean(phone), explicitSender: Boolean(process.env.SPECTRUM_SENDER_PHONE),
   }}));
-  stage = "connect";
-  const app = await Spectrum({
-    projectId: process.env.SPECTRUM_PROJECT_ID!,
-    projectSecret: process.env.SPECTRUM_PROJECT_SECRET!,
-    providers: [imessage.config()],
-  });
-  try {
-    const provider = imessage(app);
-    stage = "resolve-teacher";
-    const user = await provider.user(phone);
-    stage = "resolve-space";
-    const space = await provider.space.create(user, process.env.SPECTRUM_SENDER_PHONE
-      ? { phone: process.env.SPECTRUM_SENDER_PHONE } : undefined);
-    stage = "send";
-    const sent = await space.send(message);
-    if (process.env.CUES_SPECTRUM_DEBUG === "1") {
+  const outcome = await sendSpectrumMessage({
+    projectId: process.env.SPECTRUM_PROJECT_ID,
+    projectSecret: process.env.SPECTRUM_PROJECT_SECRET,
+    senderPhone: process.env.SPECTRUM_SENDER_PHONE,
+  }, phone, message, {
+    onResponse: (sent) => {
+      if (process.env.CUES_SPECTRUM_DEBUG !== "1") return;
       const shape = (value: unknown): unknown => {
         if (value == null) return { type: String(value) };
         if (Array.isArray(value)) return { type: "array", length: value.length, items: value.map(shape) };
@@ -63,17 +49,21 @@ async function main() {
             .map(([key, val]) => [key, typeof val === "string" ? safe(val) : val])
         ) };
       };
-      diagnostic(JSON.stringify({ cuesNotification: true, stage, response: shape(sent) }));
-    }
-    if (!sent || (Array.isArray(sent) && sent.length === 0)) throw new Error("No acknowledgement");
-  } finally { await app.stop(); }
+      diagnostic(JSON.stringify({ cuesNotification: true, stage: "send", response: shape(sent) }));
+    },
+  });
+  if (!outcome.accepted) {
+    stage = outcome.stage;
+    diagnostic(JSON.stringify({ cuesNotification: true, stage, error: safe(outcome.detail) }));
+    process.stdout.write(JSON.stringify({ accepted: false, category: outcome.category }) + "\n");
+    process.exitCode = 1;
+    return;
+  }
   process.stdout.write(JSON.stringify({ accepted: true }) + "\n");
 }
 main().catch((error) => {
   diagnostic(JSON.stringify({ cuesNotification: true, stage,
     error: safe(error instanceof Error ? error.message : String(error)) }));
-  const category = error instanceof Error && error.message.includes("Target not allowed for this project")
-    ? "target_not_allowed" : "provider_failure";
-  process.stdout.write(JSON.stringify({ accepted: false, category }) + "\n");
+  process.stdout.write(JSON.stringify({ accepted: false, category: "provider_failure" }) + "\n");
   process.exitCode = 1;
 });

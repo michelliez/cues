@@ -161,9 +161,17 @@ registration no longer blocks sending when opt-in, phone and project match.
 and retry. Other failures store only safe categories and never remove a review.
 No manual Supabase registration SQL or admin UI is required.
 
-Migration 010 (the backend-only atomic acknowledgement RPC) is applied, like the rest. The Next
-server uses the root .venv Python and nested cues sender; run the existing Python/Node setup
-before testing.
+Migration 010 (the backend-only atomic acknowledgement RPC) is applied, like the rest. The test
+send runs entirely in the Next server in Node (`web/lib/notification-send.ts`); it does not start
+Python. The provider logic is one shared helper, `web/lib/spectrum-send.ts`, also used by the
+local review sender (`cues/src/notify.ts`), so run `npm ci` in `web/` as well as in `cues/`.
+
+**Hosted (Vercel).** In the project's Production environment variables set these server-side
+values (none starts with `NEXT_PUBLIC_`): `SUPABASE_URL` (or the existing public URL),
+`SUPABASE_SERVICE_ROLE_KEY`, `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, and optionally
+`SPECTRUM_SENDER_PHONE`. Redeploy, then on cues.nyc: save the opt-in under Profile, send one test,
+and check that Notifications reads "enabled" (or "activating" if the number is not yet on the
+Photon website allowlist). There is no static-phone fallback on the host.
 
 Runtime message sending continues to use SPECTRUM_PROJECT_ID and
 SPECTRUM_PROJECT_SECRET in cues/.env. Phone changes invalidate consent and
