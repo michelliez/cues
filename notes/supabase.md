@@ -2,9 +2,10 @@
 
 ## Status
 
-Hosted status was last checked against the Supabase migration ledger with
-`scripts/supabase-migrations.py list` on 2026-11-14: migrations through 017 are
-applied. Migration 018 and the 20261115000100/20261115000200 repairs are local only. Every
+Hosted status was checked through the official Supabase MCP on 2026-11-15:
+migrations through 018 and `20261115000100_task_observable` were already applied.
+The two repairs were then applied separately as `20261115082639` and
+`20261115082802`, with hosted rollback checks passing after each. Every
 migration is tested by a fresh replay on a local PostgreSQL with minimal Auth stubs
 (`supabase/tests/test_migration_replay.py`; this is SQL replay, not full Auth/Realtime
 emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL's `initdb`,
@@ -32,11 +33,12 @@ emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL
 | `001500_review_marks` | Mark as reviewed (`seat_review_marks`, `mark_seat_reviewed`); reviews close when the task is done; status `reviewed` |
 | `001600_station_flags` | `read_station_flags` for the dashboard timeline's data |
 | `001700_station_writers` | One camera per station (`station_writers`, `claim_station_writer`, `release_station_writer`) |
-| `001800_interventions` | **Written, not applied to the hosted project.** The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below). Needed only by `agent.interventions` and `web.interventions` (both off) |
-| `20261115000100_review_resolution_marks` | **Local only, not applied.** Confirmed/dismissed review answers acknowledge the active camera task atomically, without changing the saved decision |
-| `20261115000200_teacher_flag_decisions` | **Local only, not applied.** Immutable camera-only teacher decisions and the atomic `record_teacher_flag_decision` RPC; needed by `web.flag_decisions` (off) |
+| `001800_interventions` | Already hosted before this rollout. The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below); no flag enabled by this rollout |
+| `20261115000100_task_observable` | Already hosted before this rollout; adds nullable `seat_state.task_observable`. Recovered the exact hosted SQL into this branch to reconcile history |
+| `20261115082639_review_resolution_marks` | Applied and database-verified on 2026-11-15. Confirmed/dismissed review answers acknowledge the active camera task atomically, without changing the saved decision |
+| `20261115082802_teacher_flag_decisions` | Applied and database-verified on 2026-11-15. Immutable camera-only teacher decisions and the atomic `record_teacher_flag_decision` RPC; `web.flag_decisions` remains off |
 
-## Camera-only decisions (local migration 20261115000200)
+## Camera-only decisions (migration 20261115082802)
 
 `teacher_flag_decisions` records the teacher's chosen confirmed/dismissed answer
 when vision flagged someone before an agent review existed. The canonical model
@@ -77,12 +79,12 @@ The request UUID and original observation survive retries in the mounted button.
 
 Verification: SQL tests are in `supabase/tests/test_review_marks.py`; browser
 contract/fallback tests are in `web/tests/flag-decisions.test.ts`. Local results and
-rollout limitations are recorded in `bugfix-implementation-log.md`. Hosted
-deployment, signed-in browser/camera acceptance and team sign-off remain pending.
+rollout limitations are recorded in `bugfix-implementation-log.md`. Hosted database
+checks passed; signed-in browser/camera acceptance and team sign-off remain pending.
 
-## Review answers acknowledge the camera (local migration 20261115000100)
+## Review answers acknowledge the camera (migration 20261115082639)
 
-Deploy `20261115000100_review_resolution_marks.sql` before the dashboard change.
+`20261115082639_review_resolution_marks.sql` is applied to the hosted project.
 The existing `resolve_teacher_review` signature, owner checks and returned review
 stay unchanged. An after-update trigger writes the resolution timestamp and
 authenticated actor into `seat_review_marks` when the review's session is active
@@ -100,7 +102,16 @@ repair to the existing review workflow under `web.teacher_review_actions`, with
 no new feature flag or data fields. Vision and the worker already consume marks.
 
 Tests: `supabase/tests/test_review_marks.py`, `web/tests/teacher-review-actions.test.ts`.
-Hosted deployment and team sign-off have not been performed.
+Hosted database checks passed on 2026-11-15. Team sign-off remains unrecorded.
+
+### November 15 rollout reconciliation
+
+The locally prepared review repair originally used `20261115000100`, but hosted
+history already used that version for `task_observable`. The official MCP assigned
+`20261115082639` and `20261115082802` to the two repairs. Their local filenames and
+documentation now match those ledger entries. The recovered `task_observable`
+migration preserves the already-hosted version and SQL. No ledger rows were
+rewritten, no unrelated migration was replayed, and the new feature remains off.
 
 ## Reconciled migration history
 

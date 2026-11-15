@@ -1,5 +1,5 @@
 -- Preserve a teacher's answer to a camera flag without inventing an agent review.
--- Requires 20261115000100's review-before-mark lock order.
+-- Requires 20261115082639's review-before-mark lock order.
 begin;
 
 create table public.teacher_flag_decisions (

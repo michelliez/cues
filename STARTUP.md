@@ -97,24 +97,24 @@ Each failed send logs a safe reason (no phone, secret or provider detail).
 
 ## Database and demo prerequisites
 
-Local repair migration `20261115000100_review_resolution_marks.sql` must be
-deployed before using the dashboard's review-reset fix. It makes a confirmed or
-dismissed review answer acknowledge the active camera task atomically. It has
-not been applied to the hosted project; see `notes/supabase.md` for rollout and
-local verification. The existing RPC signature and vision/worker readers remain
-compatible.
+Repair migration `20261115082639_review_resolution_marks.sql` was applied and
+verified on the hosted project on 2026-11-15. It makes a confirmed or dismissed
+review answer acknowledge the active camera task atomically. The existing RPC
+signature and vision/worker readers remain compatible; see `notes/supabase.md`.
 
-Camera-only support choices additionally require local migration
-`20261115000200_teacher_flag_decisions.sql`, applied after the review-reset repair.
-It has not been applied to the hosted project. `web.flag_decisions` defaults off:
-the UI offers Mark as reviewed until the migration and live RPC are verified.
-Then set `CUES_FLAG_WEB_FLAG_DECISIONS=1` in the web environment and rebuild/restart
-to enable distinct, durable Support needed / No support needed answers. See
+Camera-only support choices additionally require migration
+`20261115082802_teacher_flag_decisions.sql`, applied after the review-reset repair.
+It was applied and passed hosted database-role checks on 2026-11-15.
+`web.flag_decisions` remains off: the UI offers Mark as reviewed. Before enabling
+distinct, durable Support needed / No support needed answers, complete the
+signed-in browser/camera acceptance check, then explicitly set
+`CUES_FLAG_WEB_FLAG_DECISIONS=1` in the web environment and rebuild/restart. See
 `notes/bugfix-implementation-log.md` for the implementation and verification record.
 
-The first 20 migrations in `supabase/migrations/` (000100 through 001700) are applied to the hosted
-project. Migration 001800 (approved interventions) is written and tested but **not applied**; it is
-needed only by the `agent.interventions` and `web.interventions` flags, which are off. A new project applies them in filename order; see
+Hosted migration history was verified through both repairs on 2026-11-15.
+Migration 001800 (approved interventions) and `20261115000100_task_observable`
+were already applied before this rollout; this rollout did not reapply them or
+enable feature flags. A new project applies migrations in filename order; see
 [notes/supabase.md](notes/supabase.md) for what each adds, how to apply them
 (`scripts/supabase-migrations.py list|dry-run|push`) and their tests. The launcher does not
 apply migrations or create demo data. Do not reapply the initial schema to the hosted project.
