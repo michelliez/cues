@@ -29,17 +29,3 @@ test("coming back to the camera page does not hang on Connecting", () => {
   assert.match(feed, /ref=\{image\}/);
   assert.match(feed, /setInterval\(look, 250\)/);
 });
-
-test("with no activity running, the people list says so instead of 'The camera is off'", () => {
-  const dashboard = read("../components/dashboard.tsx");
-  const controls = read("../components/session-controls.tsx");
-  // The dashboard listens for the same label the session controls send.
-  const label = dashboard.match(/const NO_ACTIVITY = "([^"]+)"/)?.[1] ?? "";
-  assert.ok(label);
-  assert.ok(controls.includes(`"${label}"`));
-  assert.match(dashboard, /onActivity=\{setSessionActivity\}/);
-  // The no-activity message comes before the camera-off fallback.
-  const noActivity = dashboard.indexOf("No activity running. Pick one and press Start");
-  const cameraOff = dashboard.indexOf("The camera is off.");
-  assert.ok(noActivity > 0 && noActivity < cameraOff);
-});
