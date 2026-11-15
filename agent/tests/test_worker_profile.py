@@ -11,6 +11,9 @@ from agent.escalation import DEMO_ESCALATION_CONFIG
 def test_worker_passes_explicit_profile_and_polling(monkeypatch, profile):
     monkeypatch.setattr("sys.argv", ["worker", "--profile", profile])
     monkeypatch.setattr(worker, "load_dotenv", lambda *args: None)
+    # This test is about profile timing, not live progress; a developer's root .env may turn
+    # that flag on (vision.supabase_client loads it on import), which adds an option.
+    monkeypatch.setenv("CUES_FLAG_AGENT_LIVE_PROGRESS", "0")
     monkeypatch.setattr(
         "dotenv.dotenv_values",
         lambda *args: {

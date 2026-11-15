@@ -220,7 +220,9 @@ def test_gesture_stage_scores_current_task(tmp_path):
     stage.process(None, ctx)
     assert ctx["match"]["S1-L"].score > 0.8
     assert "nearest target" in ctx["match"]["S1-L"].detail
-    assert "S1-R" not in ctx["match"]  # no hand there
+    # No hand there: an explicit not-observable match (missing evidence), never a 0.0 score.
+    assert ctx["match"]["S1-R"].score is None
+    assert ctx["match"]["S1-R"].observable is False
 
 
 def test_gesture_stage_reports_missing_examples(tmp_path):
