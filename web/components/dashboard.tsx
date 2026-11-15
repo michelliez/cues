@@ -65,7 +65,8 @@ const Companion = dynamic(() => import("@/components/login-companion"), {
   ssr: false,
 });
 
-const ignoreActivity = () => {};
+// What the session controls report when the station has no activity running.
+const NO_ACTIVITY = "No activity running";
 const INITIAL: FeedState = {
   snapshot: null,
   connection: "connecting",
@@ -197,6 +198,9 @@ export default function Dashboard({
   const resolvesStation =
     !stationOverride && (sessionControlsEnabled || teacherLoginEnabled);
   const [account, setAccount] = useState<Account>({ state: "checking" });
+  // The session controls' activity label. With no activity running, vision
+  // sends no one, so an empty list does not mean the camera is off.
+  const [sessionActivity, setSessionActivity] = useState("");
   const station =
     stationOverride || (account.state === "ready" ? account.station : "");
   // Marks are shared with the other page through this tab's storage, per
@@ -724,6 +728,8 @@ export default function Dashboard({
         : "People aren’t available right now."
     : cameraReporting
       ? "No one is in view right now."
+      : sessionLive && sessionActivity === NO_ACTIVITY
+        ? "No activity running. Pick one and press Start to see people here."
       : observationOptions.connected
         ? "The camera is off. People appear here when it sees them."
         : "Updates paused. Reconnecting…";
@@ -791,7 +797,7 @@ export default function Dashboard({
                     <SessionControls
                       client={client}
                       station={station}
-                      onActivity={ignoreActivity}
+                      onActivity={setSessionActivity}
                       teacherLoginEnabled={teacherLoginEnabled}
                       resetPeople={
                         resetPeopleEnabled

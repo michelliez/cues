@@ -15,8 +15,6 @@ import {
 } from "@/lib/session-controls";
 
 const RESET_LABEL = "Put everyone back to working";
-const RESET_CONFIRM =
-  "Put everyone back to working? People who finished start over, and open requests are closed.";
 
 // Module-wide, so a remount never reuses a topic whose channel is still leaving.
 let channelId = 0;
@@ -363,8 +361,8 @@ export function SessionControls({
       disabled={busy}
       onClick={() => {
         if (!restart) return setRefreshKey((n) => n + 1);
-        if (window.confirm(RESET_CONFIRM) && snapshot?.session)
-          void act(snapshot.session.current_activity_id);
+        // One press resets: no confirm step.
+        if (snapshot?.session) void act(snapshot.session.current_activity_id);
       }}
     >
       <WorkspaceIcon name="refresh" />
