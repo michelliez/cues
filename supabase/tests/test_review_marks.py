@@ -9,7 +9,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -124,6 +127,9 @@ def db():
                 + seat_state(S_RUN, "S1-P2", "raise_hand", "done")
             )
             sql((MIGRATIONS / MARKS).read_text())
+            for file in files:
+                if file.name > MARKS:
+                    sql(file.read_text())
             yield sql
         finally:
             run("pg_ctl", "-D", data, "-m", "immediate", "-w", "stop")
@@ -309,3 +315,198 @@ def test_a_reviewed_review_cannot_be_reopened(db):
         check=False,
     )
     assert refused.returncode and "review already resolved" in refused.stderr
+
+
+def resolution_fixture(db):
+    """An independent live task so resolution tests cannot reuse another test's mark."""
+    station = "resolve_" + uuid4().hex[:12]
+    session = str(uuid4())
+    seat = station + "-P1"
+    db(f"""
+      insert into public.stations(id,name) values ('{station}','Resolution test');
+      insert into public.station_teachers(station_id,teacher_id) values ('{station}','{TEACHER}');
+      insert into public.seats(id,station_id,is_simulated) values ('{seat}','{station}',true);
+      insert into public.sessions(id,station_id,current_activity_id,teacher_id)
+        values ('{session}','{station}','raise_hand','{TEACHER}');
+      insert into public.seat_state(seat_id,session_id,activity_id,status,session_revision)
+        values ('{seat}','{session}','raise_hand','review',0);
+    """)
+    db(review(session, seat, "raise_hand", 1))
+    review_id = scalar(db, f"select id from public.teacher_reviews where session_id='{session}';")
+    return session, seat, review_id
+
+
+@pytest.mark.parametrize("action", ["confirmed", "dismissed"])
+def test_resolving_a_review_preserves_the_answer_and_acknowledges_the_camera(db, action):
+    session, seat, review_id = resolution_fixture(db)
+    before = scalar(db, f"select updated_at from public.seat_state where seat_id='{seat}';")
+    result = as_user(
+        db, TEACHER, f"select * from public.resolve_teacher_review('{review_id}','{action}');"
+    )
+    assert result.returncode == 0, result.stderr
+    assert (
+        scalar(db, f"select status from public.teacher_reviews where id='{review_id}';") == action
+    )
+    assert (
+        scalar(
+            db,
+            f"select m.marked_by='{TEACHER}' and m.marked_at=r.resolved_at "
+            "from public.seat_review_marks m join public.teacher_reviews r "
+            f"on r.session_id=m.session_id and r.seat_id=m.seat_id where r.id='{review_id}';",
+        )
+        == "t"
+    )
+    # A teacher acknowledgement must not fabricate a new camera observation.
+    assert scalar(db, f"select updated_at from public.seat_state where seat_id='{seat}';") == before
+    assert scalar(db, f"select status from public.seat_state where seat_id='{seat}';") == "review"
+    repeated = as_user(
+        db, TEACHER, f"select * from public.resolve_teacher_review('{review_id}','{action}');"
+    )
+    assert repeated.returncode and "already resolved" in repeated.stderr
+    assert (
+        scalar(db, f"select count(*) from public.seat_review_marks where session_id='{session}';")
+        == "1"
+    )
+
+
+def test_a_failed_acknowledgement_rolls_back_the_review_answer(db):
+    session, _, review_id = resolution_fixture(db)
+    db("""
+      create function public.reject_test_review_mark() returns trigger language plpgsql as $$
+      begin raise exception 'synthetic acknowledgement failure'; end $$;
+      create trigger reject_test_review_mark before insert on public.seat_review_marks
+        for each row execute function public.reject_test_review_mark();
+    """)
+    try:
+        result = as_user(
+            db, TEACHER, f"select * from public.resolve_teacher_review('{review_id}','dismissed');"
+        )
+        assert result.returncode and "synthetic acknowledgement failure" in result.stderr
+        assert (
+            scalar(db, f"select status from public.teacher_reviews where id='{review_id}';")
+            == "pending"
+        )
+        assert (
+            scalar(
+                db, f"select count(*) from public.seat_review_marks where session_id='{session}';"
+            )
+            == "0"
+        )
+    finally:
+        db(
+            "drop trigger reject_test_review_mark on public.seat_review_marks; "
+            "drop function public.reject_test_review_mark();"
+        )
+
+
+def test_a_historical_activity_answer_does_not_reset_the_current_activity(db):
+    session, _, review_id = resolution_fixture(db)
+    db(
+        "update public.sessions set current_activity_id='thumbs_up',revision=revision+1 "
+        f"where id='{session}';"
+    )
+    result = as_user(
+        db, TEACHER, f"select * from public.resolve_teacher_review('{review_id}','dismissed');"
+    )
+    assert result.returncode == 0, result.stderr
+    assert (
+        scalar(db, f"select status from public.teacher_reviews where id='{review_id}';")
+        == "dismissed"
+    )
+    assert (
+        scalar(db, f"select count(*) from public.seat_review_marks where session_id='{session}';")
+        == "0"
+    )
+
+
+def test_an_unauthorized_answer_creates_no_acknowledgement(db):
+    session, _, review_id = resolution_fixture(db)
+    for teacher in (None, STRANGER):
+        result = as_user(
+            db, teacher, f"select * from public.resolve_teacher_review('{review_id}','confirmed');"
+        )
+        assert result.returncode
+    assert (
+        scalar(db, f"select status from public.teacher_reviews where id='{review_id}';")
+        == "pending"
+    )
+    assert (
+        scalar(db, f"select count(*) from public.seat_review_marks where session_id='{session}';")
+        == "0"
+    )
+
+
+def test_a_review_answer_advances_an_existing_acknowledgement(db):
+    session, seat, review_id = resolution_fixture(db)
+    db(
+        "insert into public.seat_review_marks(session_id,seat_id,marked_at,marked_by) "
+        f"values ('{session}','{seat}',now()-interval '1 minute','{TEACHER}');"
+    )
+    result = as_user(
+        db, TEACHER, f"select * from public.resolve_teacher_review('{review_id}','dismissed');"
+    )
+    assert result.returncode == 0, result.stderr
+    assert (
+        scalar(
+            db,
+            "select marked_at = r.resolved_at from public.seat_review_marks m "
+            "join public.teacher_reviews r on r.session_id=m.session_id "
+            f"and r.seat_id=m.seat_id where r.id='{review_id}';",
+        )
+        == "t"
+    )
+
+
+def test_the_acknowledgement_trigger_is_not_a_browser_callable_function(db):
+    for role in ("anon", "authenticated", "service_role"):
+        assert (
+            scalar(
+                db,
+                f"select has_function_privilege('{role}',"
+                "'public.acknowledge_resolved_teacher_review()','EXECUTE');",
+            )
+            == "f"
+        )
+
+
+def test_mark_as_reviewed_and_a_review_answer_do_not_deadlock(db):
+    session, seat, review_id = resolution_fixture(db)
+    db("""
+      create function public.delay_test_review_mark() returns trigger language plpgsql as $$
+      begin perform pg_sleep(0.6); return null; end $$;
+      create trigger delay_test_review_mark after insert on public.seat_review_marks
+        for each row execute function public.delay_test_review_mark();
+    """)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            marking = executor.submit(mark, db, TEACHER, session, seat)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                sleeping = scalar(
+                    db,
+                    "select exists (select 1 from pg_stat_activity "
+                    "where wait_event='PgSleep' and query like '%public.mark_seat_reviewed%');",
+                )
+                if sleeping == "t":
+                    break
+                time.sleep(0.01)
+            assert sleeping == "t", "mark did not reach the concurrent test barrier"
+            answering = executor.submit(
+                as_user,
+                db,
+                TEACHER,
+                f"select * from public.resolve_teacher_review('{review_id}','dismissed');",
+            )
+            marked, answered = marking.result(timeout=5), answering.result(timeout=5)
+        assert marked.returncode == 0, marked.stderr
+        assert answered.returncode and "already resolved" in answered.stderr
+        assert "deadlock" not in marked.stderr + answered.stderr
+        assert (
+            scalar(db, f"select status from public.teacher_reviews where id='{review_id}';")
+            == "reviewed"
+        )
+    finally:
+        db(
+            "drop trigger delay_test_review_mark on public.seat_review_marks; "
+            "drop function public.delay_test_review_mark();"
+        )

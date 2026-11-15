@@ -539,7 +539,10 @@ The agent picks only from this menu, and only suggests: repeat the instruction, 
 
 The teacher chooses Support needed (confirmed) or No support needed (dismissed).
 resolve_teacher_review(review_id, action) permits pending → confirmed/dismissed
-only, records server resolution time and rejects repeated resolution.
+only, records server resolution time and rejects repeated resolution. Migration
+20261115082639 also records a `seat_review_marks` acknowledgement in that same
+transaction for the active session and matching activity. Vision and the worker
+consume it to restart their timers.
 This records human attention decisions, not approval of an automatic intervention.
 
 ## 14. Optional future voice controls
@@ -773,6 +776,17 @@ needed), dismissed (No support needed), reviewed (the teacher's Mark as reviewed
 not intervention approval or an automatic instructional change. Server writes
 are required; the existing simulated-seat RLS pattern permits demo-only reads.
 The live runtime injects Supabase persistence; the in-memory store remains for offline use. Migration 004 provides authenticated resolution; demo scope permits authenticated users to resolve simulated-seat reviews, without teacher/session ownership authorization.
+
+Migration `20261115082639_review_resolution_marks.sql` adds an acknowledgement
+trigger to the existing confirmed/dismissed transition. It retains the review's
+decision, evidence and response shape, and writes the server resolution timestamp
+and authenticated actor to the existing `seat_review_marks` row. No camera score,
+status or observation timestamp is changed. Answering a historical activity does
+not acknowledge the current activity. The trigger also covers intervention
+approval when that existing feature is enabled. It is applied to the hosted project.
+
+Existing event types and existing review/mark response shapes are unchanged.
+This shared-table addition still needs Keith, Evan and Michelle's sign-off in the PR.
 
 ---
 

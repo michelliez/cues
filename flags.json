@@ -173,6 +173,12 @@
     "owner": "michelle",
     "ticket": "live-progress"
   },
+  "vision.flag_on_time_on_task": {
+    "description": "Flag a child as needing review after the no-progress wait of plain time on task (tracking loss excluded), even when Cues could not score their hand. Off: only judged time counts (PR #101).",
+    "default": false,
+    "owner": "evan",
+    "ticket": "PR-104"
+  },
   "vision.review_marks": {
     "description": "Read the teacher's Mark as reviewed marks so a flagged child goes back to working and the no-progress timer restarts. Reads only seat ids and times from Supabase.",
     "default": true,

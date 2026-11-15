@@ -53,7 +53,7 @@ Root `.env` (backend only; never commit credentials):
 | `DATABASE_URL` | Only for `scripts/supabase-migrations.py` (applying migrations); never needed to run the stack |
 | `CUES_OVERLAY` | `debug` draws every stage's own detail on the video instead of the normal overlay |
 | `CUES_NO_PROGRESS_SECONDS` | Shortens the "no progress" wait (default 3s for gesture tasks, 30s for raise hand); it never lengthens one. `./scripts/demo.sh` sets it to the agent's demo stall time (4), so raise hand flags at 4s and gestures stay at 3s |
-| `CUES_GESTURE_NO_PROGRESS_SECONDS` | How long a person may be Working on a gesture task (built-in or recorded) before they read Needs Review (default 3). Set `30` to go back to the old wait. Only time Cues can judge counts: a hand it cannot score (no recorded examples) does not. After Mark as reviewed the child gets at least 15s before being flagged again |
+| `CUES_GESTURE_NO_PROGRESS_SECONDS` | How long a person may be Working on a gesture task (built-in or recorded) before they read Needs Review (default 3). Set `30` to go back to the old wait. Only time Cues can judge counts: a hand it cannot score (no recorded examples) does not, unless `vision.flag_on_time_on_task` is on (off by default, following #101): then all time on a task Cues can watch counts (tracking loss excluded). After Mark as reviewed the child gets at least 15s before being flagged again |
 | `CUES_PALM_FLIP` | `1` swaps palm and back of hand if a camera mirrors its output |
 | `CUES_SPECTRUM_DEBUG` | Optional extra logging from the notification sender |
 
@@ -97,9 +97,13 @@ Each failed send logs a safe reason (no phone, secret or provider detail).
 
 ## Database and demo prerequisites
 
-The first 20 migrations in `supabase/migrations/` (000100 through 001700) are applied to the hosted
-project. Migration 001800 (approved interventions) is written and tested but **not applied**; it is
-needed only by the `agent.interventions` and `web.interventions` flags, which are off. A new project applies them in filename order; see
+Migration `20261115082639_review_resolution_marks.sql` makes a confirmed or dismissed review
+answer acknowledge the active camera task in the same transaction, so vision puts the person back
+to working. It is applied to the hosted project; see `notes/supabase.md`.
+
+Every migration in `supabase/migrations/` (000100 through 001800, then `20261115000100_task_observable`
+and `20261115082639_review_resolution_marks`) is applied to the hosted project (checked
+2026-11-15). A new project applies them in filename order; see
 [notes/supabase.md](notes/supabase.md) for what each adds, how to apply them
 (`scripts/supabase-migrations.py list|dry-run|push`) and their tests. The launcher does not
 apply migrations or create demo data. Do not reapply the initial schema to the hosted project.
