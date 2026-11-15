@@ -21,9 +21,8 @@ test("switching an activity closes open requests, and the refresh button restart
   // After a successful start/change/restart (never after End), open requests are closed.
   assert.match(controls, /activityId !== null && !result\.ended_at\) await clearRequests\(result\.id\)/);
   assert.match(controls, /markSeatReviewed\(client, sessionId, seatId\)/);
-  // The restart is the same verified RPC as Change activity, on the current activity, on one
-  // press: no confirm step (a native confirm is silently cancelled in embedded browsers).
-  assert.doesNotMatch(controls, /confirm\(/i);
+  // The restart is the same verified RPC as Change activity, on the current activity, after a confirm.
+  assert.match(controls, /window\.confirm\(RESET_CONFIRM\)/);
   assert.match(controls, /act\(snapshot\.session\.current_activity_id\)/);
   // Off, or with no running activity, or while the session failed to load: it only reloads.
   assert.match(controls, /resetPeople && snapshot\?\.session && !loadError && !refreshRequired/);

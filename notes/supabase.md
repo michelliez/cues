@@ -2,10 +2,9 @@
 
 ## Status
 
-Hosted status was last checked against the Supabase migration ledger with
-the Supabase migration list on 2026-11-15: every migration below is applied, through
-`20261115082802_teacher_flag_decisions`. Every
-migration is tested by a fresh replay on a local PostgreSQL with minimal Auth stubs
+All 20 migrations below are applied to the hosted project and none are pending (checked against
+the Supabase migration ledger with `scripts/supabase-migrations.py list` on 2026-11-14). Every
+migration passes a fresh replay on a local PostgreSQL with minimal Auth stubs
 (`supabase/tests/test_migration_replay.py`; this is SQL replay, not full Auth/Realtime
 emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL's `initdb`,
 `pg_ctl` and `psql` on the PATH and are run by the `supabase` CI workflow.
@@ -32,31 +31,7 @@ emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL
 | `001500_review_marks` | Mark as reviewed (`seat_review_marks`, `mark_seat_reviewed`); reviews close when the task is done; status `reviewed` |
 | `001600_station_flags` | `read_station_flags` for the dashboard timeline's data |
 | `001700_station_writers` | One camera per station (`station_writers`, `claim_station_writer`, `release_station_writer`) |
-| `001800_interventions` | The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below). Needed only by `agent.interventions` and `web.interventions` (both off) |
-| `20261115000100_task_observable` | `seat_state.task_observable` (see README) |
-| `20261115082639_review_resolution_marks` | Confirmed/dismissed review answers acknowledge the active camera task atomically, without changing the saved decision. Numbered by its hosted apply time because `000100` was already taken |
-| `20261115082802_teacher_flag_decisions` | **Applied but unused.** `teacher_flag_decisions` and `record_teacher_flag_decision` for teacher answers to camera-only flags. The dashboard no longer shows camera-only flags (main, 308beae), so nothing calls it. Kept so the repo matches the hosted history; dropping it needs a new migration |
-
-## Review answers acknowledge the camera (migration 20261115082639)
-
-The existing `resolve_teacher_review` signature, owner checks and returned review
-stay unchanged. An after-update trigger writes the resolution timestamp and
-authenticated actor into `seat_review_marks` when the review's session is active
-and its activity is still current. Both confirmed and dismissed acknowledge the
-flag, while retaining their distinct decision values. If the mark fails, the
-answer rolls back too. Existing/newer marks are never moved backwards, other
-pending reviews are left alone, and no vision observation is fabricated.
-`mark_seat_reviewed` acquires review rows before the mark row, matching the answer
-path so concurrent Mark as reviewed and review answers cannot deadlock on those
-two resources.
-
-The same trigger covers confirmation by the optional intervention-approval path.
-Automatic expiry and Mark as reviewed keep their existing behavior. This is a
-repair to the existing review workflow under `web.teacher_review_actions`, with
-no new feature flag or data fields. Vision and the worker already consume marks.
-
-Tests: `supabase/tests/test_review_marks.py`, `web/tests/teacher-review-actions.test.ts`.
-Hosted deployment and team sign-off have not been performed.
+| `001800_interventions` | **Written, not applied to the hosted project.** The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below). Needed only by `agent.interventions` and `web.interventions` (both off) |
 
 ## Reconciled migration history
 

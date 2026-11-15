@@ -81,19 +81,3 @@ test("only the dashboard remembers, per station, and sign-out forgets", async ()
   forgetCompanionCounts(storage);
   assert.deepEqual([...store.keys()], ["other"]);
 });
-
-test("back from To review, the companion reads its memory again even if it was kept alive", async () => {
-  const { readFileSync } = await import("node:fs");
-  const source = readFileSync(
-    new URL("../components/review-companion.tsx", import.meta.url),
-    "utf8",
-  );
-  // Next keeps the classroom page alive while To review shows and only re-runs
-  // its effects on return, so each showing re-arms the memory read.
-  assert.match(
-    source,
-    /useEffect\(\(\) => \{\s*queueMicrotask\(\(\) => setMemoryRead\(false\)\);\s*\}, \[\]\);/,
-  );
-  // The next live count after that, an empty queue that had one waiting, is an eat.
-  assert.deepEqual(companionStep(null, 0, 1), { kind: "eat", eaten: 1 });
-});

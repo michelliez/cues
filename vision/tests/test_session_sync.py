@@ -466,8 +466,6 @@ def test_the_status_stage_counts_no_progress_only_for_a_scorable_task(monkeypatc
     monkeypatch.setattr(activities, "CUSTOM_FILE", tmp_path / "none.json")
     monkeypatch.delenv("CUES_GESTURE_NO_PROGRESS_SECONDS", raising=False)
     monkeypatch.delenv("CUES_NO_PROGRESS_SECONDS", raising=False)
-    # The judged-time rule (#101); vision.flag_on_time_on_task is checked at the end.
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "0")
     activities.load_activities.cache_clear()
 
     def hands_down(scorable, judged=False):
@@ -499,10 +497,4 @@ def test_the_status_stage_counts_no_progress_only_for_a_scorable_task(monkeypatc
         hands_down(False, judged=True) == "in_progress"
     )  # it cannot (no hands stage, no examples)
     assert hands_down(None, judged=True) == "in_progress"  # the gestures stage did not run at all
-    # With vision.flag_on_time_on_task (the default), 3s on a task Cues can watch flags
-    # even with no hand found; a task it cannot watch at all still never flags.
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
-    assert hands_down(True) == "needs_help"
-    assert hands_down(False) == "in_progress"
-    assert hands_down(None) == "in_progress"
     activities.load_activities.cache_clear()

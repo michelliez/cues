@@ -10,12 +10,6 @@ from vision.status import ExpressionTracker, SeatTracker
 GESTURE = Activity("thumbs_up", "Thumbs up", "gesture", 0.78, 0.58, 30)
 
 
-@pytest.fixture(autouse=True)
-def _judged_time_only(monkeypatch):
-    """These rules are the judged-time ones (#101); the time-on-task tests turn it on."""
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "0")
-
-
 def run(tracker, steps):
     """steps: list of (t, score, hand, face). Returns the event types in order."""
     out = []
@@ -258,59 +252,3 @@ def test_a_task_cues_cannot_score_never_flags_even_with_hands_down():
     for t, score, hand, face in steps:
         out += [e.type for e in tr.update(t, score, hand, face, judgeable=False)]
     assert out == [] and tr.status == "in_progress"
-
-
-# vision.flag_on_time_on_task: past the wait on the task, a child who has not finished
-# needs review, whether or not Cues could score their hand.
-
-
-def test_time_on_task_flags_a_hand_cues_cannot_score(monkeypatch):
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
-    act = Activity("pointing", "Pointing", "gesture", 0.78, 0.58, 3)
-    tr = SeatTracker("S1-L", act)
-    assert "no_progress" not in run(tr, ticks(0, 2.8, None, hand=True))
-    assert "no_progress" in run(tr, ticks(2.9, 3.3, None, hand=True))
-    assert tr.status == "needs_help"
-
-
-def test_time_on_task_flags_after_a_brief_near_match(monkeypatch):
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
-    act = Activity("pointing", "Pointing", "gesture", 0.78, 0.58, 3)
-    tr = SeatTracker("S1-L", act)
-    run(tr, ticks(0, 0.5, 0.65))  # one moment in the review band, not held
-    assert "no_progress" in run(tr, ticks(0.6, 3.3, 0.1))
-    assert tr.status == "needs_help"
-
-
-def test_time_on_task_still_waits_after_mark_as_reviewed(monkeypatch):
-    from vision.status import REFLAG_AFTER_REVIEW_SECONDS
-
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
-    act = Activity("pointing", "Pointing", "gesture", 0.78, 0.58, 3)
-    tr = SeatTracker("S1-L", act)
-    run(tr, ticks(0, 3.3, None))
-    assert tr.acknowledge(3.4)
-    end = 3.4 + REFLAG_AFTER_REVIEW_SECONDS
-    assert "no_progress" not in run(tr, ticks(3.4, end - 0.5, None))
-    assert "no_progress" in run(tr, ticks(end - 0.4, end + 0.3, None))
-
-
-def test_time_on_task_never_flags_a_finished_child(monkeypatch):
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
-    act = Activity("pointing", "Pointing", "gesture", 0.78, 0.58, 3)
-    tr = SeatTracker("S1-L", act)
-    run(tr, ticks(0, 1.5, 0.9))
-    assert tr.status == "done"
-    assert "no_progress" not in run(tr, ticks(1.6, 6, None))
-    assert tr.status == "done"
-
-
-def test_time_on_task_never_flags_a_task_cues_cannot_watch(monkeypatch):
-    # Review of #104: the gestures/hands stage off or a recorded gesture with no examples
-    # (judgeable=False) must not flag every child after 3s.
-    monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
-    act = Activity("pointing", "Pointing", "gesture", 0.78, 0.58, 3)
-    tr = SeatTracker("S1-L", act)
-    for t in [i / 10 for i in range(60)]:
-        tr.update(t, None, False, True, judgeable=False)
-    assert tr.status == "in_progress"

@@ -75,14 +75,6 @@ export function ReviewCompanion({
     }
   }
 
-  // Coming back from To review does not always remount this: Next keeps the
-  // classroom page alive (hidden) and only re-runs its effects when it shows
-  // again. Each showing reads the memory once more, so a queue cleared on To
-  // review is still eaten on the way back.
-  useEffect(() => {
-    queueMicrotask(() => setMemoryRead(false));
-  }, []);
-
   // Remember the live count for this tab, for the eat on the way back.
   useEffect(() => {
     if (!memoryKey || count === null) return;

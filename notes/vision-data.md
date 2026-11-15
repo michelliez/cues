@@ -151,5 +151,4 @@ Generated from `flags.json` (override with `CUES_FLAG_VISION_<NAME>=1|0`; the la
 | `vision.station_config` | on | Local /config endpoint: the signed-in teacher's dashboard sets this laptop's station. Vision writes nothing until a station is set. When off, the station is S1 (or CUES_STATION_ID) as before. |
 | `agent.interventions` | off | The agent may attach one suggested support from the approved intervention menu to a review request. Needs migration 018; the teacher approves before anything is recorded. |
 | `agent.live_progress` | off | Publish guarded live progress summaries after migration 012 deploys. |
-| `vision.flag_on_time_on_task` | off | Flag a child after the no-progress wait of plain time on task (tracking loss excluded), even when their hand could not be scored or briefly came close. Off: only judged time counts. |
 | `vision.review_marks` | on | Read the teacher's Mark as reviewed marks so a flagged child goes back to working and the no-progress timer restarts. Reads only seat ids and times from Supabase. |
