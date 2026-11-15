@@ -53,7 +53,7 @@ Root `.env` (backend only; never commit credentials):
 | `DATABASE_URL` | Only for `scripts/supabase-migrations.py` (applying migrations); never needed to run the stack |
 | `CUES_OVERLAY` | `debug` draws every stage's own detail on the video instead of the normal overlay |
 | `CUES_NO_PROGRESS_SECONDS` | Shortens the "no progress" wait (default 3s for gesture tasks, 30s for raise hand); it never lengthens one. `./scripts/demo.sh` sets it to the agent's demo stall time (4), so raise hand flags at 4s and gestures stay at 3s |
-| `CUES_GESTURE_NO_PROGRESS_SECONDS` | How long a person may be Working on a gesture task (built-in or recorded) before they read Needs Review (default 3). Set `30` to go back to the old wait. Only time Cues can judge counts: a hand it cannot score (no recorded examples) does not, but with `vision.flag_on_time_on_task` (on by default) all time on the task counts (tracking loss excluded), so anyone still working after the wait reads Needs Review. After Mark as reviewed the child gets at least 15s before being flagged again |
+| `CUES_GESTURE_NO_PROGRESS_SECONDS` | How long a person may be Working on a gesture task (built-in or recorded) before they read Needs Review (default 3). Set `30` to go back to the old wait. Only time Cues can judge counts: a hand it cannot score (no recorded examples) does not, but with `vision.flag_on_time_on_task` (off by default) all time on the task counts (tracking loss excluded), so anyone still working after the wait reads Needs Review. After Mark as reviewed the child gets at least 15s before being flagged again |
 | `CUES_PALM_FLIP` | `1` swaps palm and back of hand if a camera mirrors its output |
 | `CUES_SPECTRUM_DEBUG` | Optional extra logging from the notification sender |
 
@@ -105,10 +105,10 @@ signature and vision/worker readers remain compatible; see `notes/supabase.md`.
 Camera-only support choices additionally require migration
 `20261115082802_teacher_flag_decisions.sql`, applied after the review-reset repair.
 It was applied and passed hosted database-role checks on 2026-11-15.
-`web.flag_decisions` remains off: the UI offers Mark as reviewed. Before enabling
-distinct, durable Support needed / No support needed answers, complete the
-signed-in browser/camera acceptance check, then explicitly set
-`CUES_FLAG_WEB_FLAG_DECISIONS=1` in the web environment and rebuild/restart. See
+The current dashboard keeps Attention and To review driven only by agent review
+requests. It has no camera-only decision controls or `web.flag_decisions` flag;
+the ledger/RPC is retained as verified backend infrastructure. Reintroducing
+camera-only decisions needs a separate product change and acceptance check. See
 `notes/bugfix-implementation-log.md` for the implementation and verification record.
 
 Hosted migration history was verified through both repairs on 2026-11-15.

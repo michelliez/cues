@@ -44,7 +44,7 @@
       "stop",
       "palm"
     ],
-    "success_threshold": 0.7,
+    "success_threshold": 0.6,
     "review_threshold": 0.5,
     "no_progress_seconds": 3,
     "builtin": "Open_Palm"

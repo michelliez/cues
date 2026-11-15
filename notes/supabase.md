@@ -36,7 +36,7 @@ emulation). Per-feature SQL tests are in `supabase/tests/`; they need PostgreSQL
 | `001800_interventions` | Already hosted before this rollout. The approved intervention menu: `teacher_reviews.suggested_intervention`, `interventions.review_id`, owner-only reads, and `approve_review_intervention` (see below); no flag enabled by this rollout |
 | `20261115000100_task_observable` | Already hosted before this rollout; adds nullable `seat_state.task_observable`. Recovered the exact hosted SQL into this branch to reconcile history |
 | `20261115082639_review_resolution_marks` | Applied and database-verified on 2026-11-15. Confirmed/dismissed review answers acknowledge the active camera task atomically, without changing the saved decision |
-| `20261115082802_teacher_flag_decisions` | Applied and database-verified on 2026-11-15. Immutable camera-only teacher decisions and the atomic `record_teacher_flag_decision` RPC; `web.flag_decisions` remains off |
+| `20261115082802_teacher_flag_decisions` | Applied and database-verified on 2026-11-15. Immutable camera-only teacher decisions and the atomic `record_teacher_flag_decision` RPC; retained as backend infrastructure with no dashboard caller |
 
 ## Camera-only decisions (migration 20261115082802)
 
@@ -70,15 +70,15 @@ own, while service-role access is read-only. Updates/deletes are prohibited. No
 new Realtime subscription or history UI is introduced. Reviews created after the
 transaction are not fabricated or automatically assigned this earlier answer.
 
-Rollout: apply migrations in filename order, verify the hosted RPC, then enable
-`CUES_FLAG_WEB_FLAG_DECISIONS=1` (or the browser-safe `NEXT_PUBLIC_` form) in the web
-environment and rebuild/restart. The flag defaults off; its fallback offers the
-existing single Mark as reviewed action. If the RPC is missing or a request fails,
-the enabled UI reports the error and does not fall back to discarding the choice.
-The request UUID and original observation survive retries in the mounted button.
+The current dashboard follows main's newer agent-review-only queue and has no
+camera-only decision controls. The earlier `web.flag_decisions` flag and browser
+helper are absent from the integrated branch; setting that environment variable
+does not enable a UI. The hosted ledger/RPC is retained as verified backend
+infrastructure. Any future caller must validate the returned decision and retain
+the request UUID and original observation across retries; a failed decision must
+never fall back to discarding the choice through an acknowledgement-only call.
 
-Verification: SQL tests are in `supabase/tests/test_review_marks.py`; browser
-contract/fallback tests are in `web/tests/flag-decisions.test.ts`. Local results and
+Verification: SQL tests are in `supabase/tests/test_review_marks.py`. Local results and
 rollout limitations are recorded in `bugfix-implementation-log.md`. Hosted database
 checks passed; signed-in browser/camera acceptance and team sign-off remain pending.
 
@@ -111,7 +111,8 @@ history already used that version for `task_observable`. The official MCP assign
 `20261115082639` and `20261115082802` to the two repairs. Their local filenames and
 documentation now match those ledger entries. The recovered `task_observable`
 migration preserves the already-hosted version and SQL. No ledger rows were
-rewritten, no unrelated migration was replayed, and the new feature remains off.
+rewritten and no unrelated migration was replayed. Integration with the newer
+main branch preserves its removal of camera-only dashboard decisions.
 
 ## Reconciled migration history
 

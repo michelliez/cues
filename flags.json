@@ -175,7 +175,7 @@
   },
   "vision.flag_on_time_on_task": {
     "description": "Flag a child as needing review after the no-progress wait of plain time on task (tracking loss excluded), even when Cues could not score their hand. Off: only judged time counts (PR #101).",
-    "default": true,
+    "default": false,
     "owner": "evan",
     "ticket": "flag-on-time-on-task"
   },
@@ -232,12 +232,6 @@
     "default": true,
     "owner": "keith",
     "ticket": "landing-needs"
-  },
-  "web.flag_decisions": {
-    "description": "Persist the teacher's distinct answer to a camera-only flag through the atomic decision RPC (migration 20261115000200). Off: offer the single Mark as reviewed action.",
-    "default": false,
-    "owner": "evan",
-    "ticket": "camera-flag-decisions"
   },
   "web.companion": {
     "description": "The Cues companion perches on the To review pill: blue at rest, orange (with a hop) when a request is waiting, and when the queue clears it eats the count and turns green before resting. Decoration only; never a student. Off: the pill shows its text and count alone.",

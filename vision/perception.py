@@ -45,3 +45,21 @@ class Match:
     reason: str = ""  # why score is None, for display
     detail: str = ""  # raw distances, shown by `vision.watch --debug`
     hand: Hand | None = None  # the one hand this score is for (one hand per person)
+    # Task-specific observability: does Cues have enough evidence for THIS task to judge this
+    # person right now? Not the same as tracking: a person can be tracked and still not
+    # judgeable (wrist out of frame, no hand found). Not observable means score is None
+    # (missing evidence, never a failure); observable means score is a number, and a low
+    # number is a real, countable failure. Left None it follows the score.
+    observable: bool | None = None
+    # Why, for diagnostics only (never shown to teachers): "observable_wrong",
+    # "missing_pose_landmarks", "no_owned_hand", "no_recogniser_evidence", "no_examples",
+    # "hand_unreadable", "person_not_visible"; "" when the task is simply judged.
+    reason_code: str = ""
+
+    def __post_init__(self) -> None:
+        if self.observable is None:
+            self.observable = self.score is not None
+        elif self.observable and self.score is None:
+            raise ValueError("an observable match needs a score")
+        elif not self.observable:
+            self.score = None  # missing evidence is never a number

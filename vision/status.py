@@ -31,8 +31,8 @@ Rules, in the order they are checked on each update:
    no_progress_seconds of active (not tracking-lost) time, sets needs_help and
    emits `no_progress` once.
 
-A score of None (no recorded examples yet, or no face for raise-hand) means
-"cannot judge": it counts toward nothing.
+A score of None (task not observable: no recorded examples yet, no hand found, a wrist out
+of frame) means "cannot judge": it counts toward nothing. A score of 0.0 is a judged failure.
 
 Separately, ExpressionTracker emits `expression_context` when anger, fear or
 sadness stays at or above EXPRESSION_MIN_PROBABILITY for EXPRESSION_MIN_SECONDS.
@@ -77,9 +77,10 @@ class SeatTracker:
         self.status = "idle"
         self._status_before_loss: str | None = None
         self.active_seconds = 0.0  # time on task, excluding tracking loss
-        # Time the task could be judged and was not done: a score was available, or no
-        # hand was up. A hand Cues cannot score (no recorded examples, gestures off) is
-        # not the child's failure and does not count.
+        # Time the task could be judged and was not done: only frames with a score (the task
+        # was observable for this person). Missing evidence (no hand found, wrist out of
+        # frame, no recogniser result, no recorded examples, gestures off) is not the child's
+        # failure and does not count, even when the task is scorable in general.
         self.judged_seconds = 0.0
         # The wait before needs_help. Longer after the teacher's Mark as reviewed, so the
         # child they just checked in with is not flagged again within seconds.
@@ -128,9 +129,9 @@ class SeatTracker:
     def update(
         self, t: float, score: float | None, hand: bool, face: bool, judgeable: bool = True
     ) -> list[StatusEvent]:
-        """`judgeable` is False when Cues cannot score this task at all (a recorded gesture
-        with no usable examples, or the gestures or hands stage off): then no time counts
-        toward no progress, whether or not a hand is up."""
+        """`score` is None when this person's task is not observable right now; that time
+        counts toward nothing. `judgeable` is False when Cues cannot score this task at all
+        (a recorded gesture with no usable examples, or the gestures or hands stage off)."""
         events: list[StatusEvent] = []
         if self._last_t is not None and t - self._last_t > MAX_STEP_SECONDS:
             # A stall (no frames for a while): that time was not observed, so it must not
@@ -162,7 +163,7 @@ class SeatTracker:
         if self.status == "done":
             return events
         self.active_seconds += dt
-        if judgeable and (score is not None or not hand):
+        if judgeable and score is not None:
             self.judged_seconds += dt
 
         # Track one "attempt" per continuous stretch of the hand being in view.

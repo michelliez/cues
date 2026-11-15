@@ -42,7 +42,6 @@ test("invalid or unknown tracking never presents a task failure or score", () =>
     );
     assert.equal(view.score, null);
     assert.equal(view.currentStatus, null);
-    assert.equal(view.needsReview, false);
   }
   assert.equal(
     observationPresentation(

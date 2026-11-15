@@ -1,20 +1,16 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { WorkspaceIcon } from "@/components/workspace-icon";
 import {
   OTHER_CAMERA,
   cameraHealth,
   healthSummary,
-  readLocalVision,
   updatesFresh,
   type CameraHealth,
   type HealthSummary,
-  type LocalVisionReading,
 } from "@/lib/camera-health";
-import { mayConnectLocalFeed } from "@/lib/local-feed-policy";
-
-const POLL_MS = 3000;
+import type { LocalVisionState } from "@/lib/use-local-vision";
 
 type CameraHealthProps = {
   station: string;
@@ -23,57 +19,25 @@ type CameraHealthProps = {
   inView: number;
   /** Another camera is being refused on this station (from its writer row). */
   conflict: boolean;
-  /** web.hosted_local_feed: the hosted dashboard may read this laptop's service. */
-  hostedEnabled?: boolean;
-  hostedOrigin?: string;
+  /** The one reading of this laptop's vision service the dashboard polls (useLocalVision). */
+  local: LocalVisionState;
 };
 
-/** The strip's live state. */
+/** The strip's live state: the shared vision reading plus the station's rows. */
 function useCameraHealth({
   station,
   updatedAt,
   inView,
   conflict,
-  hostedEnabled = false,
-  hostedOrigin,
+  local,
 }: CameraHealthProps): { health: CameraHealth; summary: HealthSummary } {
-  const [vision, setVision] = useState<LocalVisionReading | null>(null);
-  // The clock starts on the first poll (in the effect), never during render.
-  const [now, setNow] = useState(0);
-  // Known only in the browser; until then the strip reads "Checking".
-  const [localReadable, setLocalReadable] = useState<boolean | null>(null);
-  useEffect(() => {
-    let disposed = false;
-    // Only a page allowed to reach this laptop (localhost, or the hosted origin with
-    // web.hosted_local_feed) reads its vision service, as the video feed does.
-    const readable = mayConnectLocalFeed(window.location.origin, hostedEnabled, hostedOrigin);
-    queueMicrotask(() => {
-      if (!disposed) setLocalReadable(readable);
-    });
-    const tick = () => {
-      if (document.hidden) return;
-      setNow(Date.now());
-      if (!readable) return;
-      void readLocalVision().then((reading) => {
-        if (!disposed) setVision(reading);
-      });
-    };
-    tick();
-    const timer = setInterval(tick, POLL_MS);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      disposed = true;
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-    };
-  }, [hostedEnabled, hostedOrigin]);
   const health = cameraHealth({
-    vision,
+    vision: local.vision,
     station,
-    updatesFresh: updatesFresh(updatedAt, now),
+    updatesFresh: updatesFresh(updatedAt, local.now),
     inView,
     conflict,
-    localReadable: localReadable ?? undefined,
+    localReadable: local.localReadable ?? undefined,
   });
   return { health, summary: healthSummary(health) };
 }

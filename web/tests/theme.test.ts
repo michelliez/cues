@@ -174,9 +174,11 @@ test("people are labelled as the backend names them, never made-up names", () =>
   for (const file of ["dashboard.tsx"]) {
     const source = read(`../components/${file}`);
     assert.doesNotMatch(source, /simulated-names|displayName\(/);
+    // Everyone with a seat, and the seats with an observation of the current session.
+    assert.match(source, /const allSeats = feed\.snapshot \? seatViews\(feed\.snapshot\) : \[\];/);
     assert.match(
       source,
-      /const seats = feed\.snapshot \? seatViews\(feed\.snapshot\) : \[\];/,
+      /const seats = feed\.snapshot\s*\? seatViews\(currentObservations\(feed\.snapshot, observationContext\)\)/,
     );
   }
 });

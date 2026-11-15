@@ -151,6 +151,20 @@ class SeatState(_Contract):
     session_revision: SessionRevision | None = None
     task_score: UnitScore | None = None
     expression_context: ExpressionContext | None = None
+    # Could Cues judge this person on the task right now? Different from tracking_valid (the
+    # person is still tracked) and never a failure: False means missing evidence and
+    # task_score is None; True means a judged observation and task_score is a number, where
+    # 0.0 is a real, countable failure. Left None (rows from before the column existed, or
+    # producers that don't set it) it follows the score, so every consumer reads a bool.
+    task_observable: bool | None = None
+
+    @model_validator(mode="after")
+    def _task_observable_matches_score(self) -> Self:
+        if self.task_observable is None:
+            self.task_observable = self.task_score is not None
+        elif self.task_observable != (self.task_score is not None):
+            raise ValueError("task_observable must be true exactly when task_score is a number")
+        return self
 
 
 class Activity(_Contract):

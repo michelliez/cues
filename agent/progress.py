@@ -28,6 +28,11 @@ class ProgressEvaluator:
     updated_at must describe a fresh task observation, not an unrelated app update.
     Scores are compared only within the configured activity. Rule-based tasks use
     explicit done status; gesture tasks can also use Activity.success_threshold.
+
+    Evidence, for every task type: tracking invalid, or the task not observable
+    (task_score None: Cues could not judge this person), is "unknown", never a failure,
+    and clears the window. Only an observable low score (a number, even 0.0) can build
+    toward "stalled".
     """
 
     def __init__(
@@ -108,7 +113,8 @@ class ProgressEvaluator:
             return self.state
         if previous is not None and (self.last - previous).total_seconds() > self.max_gap:
             self._clear_window()
-        if self.activity.check_type == "gesture" and snapshot.task_score is None:
+        if not snapshot.task_observable:
+            # Tracked, but nothing to judge on this task: missing evidence, not failure.
             self._clear_window()
             return self.state
         if self.started is None:

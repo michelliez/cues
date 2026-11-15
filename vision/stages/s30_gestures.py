@@ -60,11 +60,15 @@ def score_gesture(activity, hands, cache: MatcherCache, exclude_palm: bool = Fal
     * Recorded gestures: nearest-neighbour match against the teacher's
       examples. With exclude_palm, hands whose palm faces the camera are
       skipped (used by recognise mode).
-    score is None when it cannot be judged (no hand, or no examples).
+    score is None when it cannot be judged (no hand, no recogniser evidence, or no
+    examples). A hand that is there and clearly not the gesture scores a low number.
     """
     if not hands:
         return None, None, "no hand detected", ""
     if activity.builtin:
+        if not any(h.gestures for h in hands):
+            # Landmarks only: the recogniser said nothing, so this gesture can't be judged.
+            return None, hands[0], "no recogniser result", ""
         score, hand = max(
             ((h.gestures.get(activity.builtin, 0.0), h) for h in hands), key=lambda x: x[0]
         )
@@ -127,9 +131,28 @@ class GesturesStage:
                     activity.builtin is not None or self.cache.get(activity_id)[0] is not None
                 )
             if seat not in hands:
+                # No hand owned by this person: nothing to judge, so missing evidence.
+                result[seat] = Match(
+                    activity_id,
+                    None,
+                    "no hand detected",
+                    reason_code="no_owned_hand",
+                )
                 continue
             score, hand, reason, detail = score_gesture(activity, hands[seat], self.cache)
-            result[seat] = Match(activity_id, score, reason, detail=detail, hand=hand)
+            if score is None:
+                code = (
+                    "no_recogniser_evidence"
+                    if reason == "no recogniser result"
+                    else "hand_unreadable"
+                    if reason == "hand unreadable"
+                    else "no_examples"
+                )
+            else:
+                code = "observable_wrong" if score < activity.review_threshold else ""
+            result[seat] = Match(
+                activity_id, score, reason, detail=detail, hand=hand, reason_code=code
+            )
         ctx["match"] = result
         ctx["scorable"] = scorable
 

@@ -50,8 +50,16 @@ known gesture is checked and a completed one is shown green on the video. It is
 display-only, not a replacement for the assigned-task state feed. Raise-hand
 (task score and detection) requires an open palm facing the camera.
 Built-in gestures (MediaPipe Gesture Recognizer, no recording): `thumbs_up`
-(Thumb_Up) and `open_palm` (Open_Palm, success 0.7 / review 0.5). When a raised
+(Thumb_Up) and `open_palm` (Open_Palm, success 0.6 / review 0.5). When a raised
 open palm completes both, `raise_hand` wins over `open_palm`.
+
+`open_palm` succeeds at 0.6, not 0.7, because the recogniser's Open_Palm score is a class
+probability that rarely reaches 0.7 for a real palm on a laptop webcam. Measured locally:
+22 correct palms scored min 0.589, median 0.636, mean 0.634, max 0.698; 24 closed fists all
+scored 0.000. Passing at each threshold: 0.70 none of 22, 0.65 five of 22, 0.60 twenty of 22;
+no fist passed at any of them. Raise-hand (0.7 / 0.4) and the other gestures are unchanged.
+The same value is in `vision/activities.json` (which the agent also reads) and `supabase/seed.sql`
+(migration 014 still creates the row at 0.7; the seed, which runs after migrations, updates it).
 
 ## Tasks and perception
 

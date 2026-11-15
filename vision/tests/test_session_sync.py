@@ -466,29 +466,39 @@ def test_the_status_stage_counts_no_progress_only_for_a_scorable_task(monkeypatc
     monkeypatch.setattr(activities, "CUSTOM_FILE", tmp_path / "none.json")
     monkeypatch.delenv("CUES_GESTURE_NO_PROGRESS_SECONDS", raising=False)
     monkeypatch.delenv("CUES_NO_PROGRESS_SECONDS", raising=False)
-    # The judged-time rule (#101); vision.flag_on_time_on_task is checked at the end.
     monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "0")
     activities.load_activities.cache_clear()
 
-    def hands_down(scorable):
+    def hands_down(scorable, judged=False):
+        """5s with a face in view. judged: a hand is up and scored 0.0 (a real failure);
+        otherwise there is no hand and no score (missing evidence)."""
+        from vision.perception import Match
+
         run = _Run()
         ctx = None
-        for i in range(50):  # 5s, face in view, no hand, no score
+        for i in range(50):
             t = 10 + i / 10
             run.clock[0] = t
             run.state.confirm(run.session)
             frame = Frame(run.image, t, i)
-            ctx = {"hands": {}, "faces": {"S1-L": object()}}
+            ctx = {"hands": {"S1-L": [object()]} if judged else {}, "faces": {"S1-L": object()}}
             if scorable is not None:
                 ctx["scorable"] = {"thumbs_up": scorable}
-            run.pin.process(frame, ctx)
+            run.pin.process(frame, ctx)  # starts each frame's matches empty
+            if judged:
+                ctx["match"] = {"S1-L": Match("thumbs_up", 0.0)}
             run.status.process(frame, ctx)
         return ctx["status"]["S1-L"]
 
-    assert hands_down(True) == "needs_help"  # Cues can score Thumbs up: 3s counts
-    assert hands_down(False) == "in_progress"  # it cannot (no hands stage, no examples)
-    assert hands_down(None) == "in_progress"  # the gestures stage did not run at all
-    # With vision.flag_on_time_on_task (the default), 3s on the task flags either way.
+    # Cues can score Thumbs up and the person gave a judged 0.0: 3s counts.
+    assert hands_down(True, judged=True) == "needs_help"
+    # No hand found is missing evidence, even though the task is scorable in general.
+    assert hands_down(True) == "in_progress"
+    assert (
+        hands_down(False, judged=True) == "in_progress"
+    )  # it cannot (no hands stage, no examples)
+    assert hands_down(None, judged=True) == "in_progress"  # the gestures stage did not run at all
+    # The opt-in mode still counts observed task time, with tracking loss excluded.
     monkeypatch.setenv("CUES_FLAG_VISION_FLAG_ON_TIME_ON_TASK", "1")
     assert hands_down(False) == "needs_help"
     assert hands_down(None) == "needs_help"

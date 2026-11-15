@@ -3,7 +3,7 @@ import { parseTeacherReviews, type TeacherReview } from "./teacher-reviews.ts";
 
 export type ReviewResolution = "confirmed" | "dismissed";
 
-/** The authenticated resolution RPC saves the answer. Migration 20261115000100
+/** The authenticated resolution RPC saves the answer. Migration 20261115082639
  * also records the live task's camera acknowledgement in the same transaction.
  */
 export async function resolveTeacherReview(

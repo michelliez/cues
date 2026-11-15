@@ -548,17 +548,19 @@ is not hidden by the old answer. This migration was applied and database-verifie
 on the hosted project on 2026-11-15.
 This records human attention decisions, not approval of an automatic intervention.
 
-With `web.flag_decisions` (default off), the teacher can also answer a camera flag
-before an agent review exists. `record_teacher_flag_decision` saves the actual
+The hosted backend also supports a camera-only decision ledger, but the current
+dashboard exposes choices only for agent review requests. There is no
+`web.flag_decisions` flag or camera-only UI in the integrated branch.
+`record_teacher_flag_decision` saves the actual
 confirmed/dismissed choice in `teacher_flag_decisions`, resolves any currently
 pending review for that same task with the chosen answer, and acknowledges the
 flag atomically. It never creates an agent review. The server verifies the session
 owner, active activity/revision and a recent unacknowledged flag. The browser sends
 an idempotency UUID and the observation it acted on; retrying the same request
-returns its original record without restarting timers again. Flag off: offer the
-single Mark as reviewed acknowledgement. Needs migration `20261115082802` after
-`20261115082639`; both were applied and database-verified on 2026-11-15. The flag
-remains off pending signed-in browser/camera acceptance.
+returns its original record without restarting timers again. Any future UI must
+use this contract rather than discarding a choice through Mark as reviewed.
+Requires migration `20261115082802` after `20261115082639`; both were applied and
+database-verified on 2026-11-15. Camera-only UI requires a separate product change.
 
 ## 14. Optional future voice controls
 

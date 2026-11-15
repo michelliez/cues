@@ -51,33 +51,3 @@ test("a To review card says the task, then not in view, then the request count",
     "Thumbs up · not in view · 3 requests",
   );
 });
-
-test("Attention lists camera-flagged people as rows until the teacher answers", async () => {
-  const { readFileSync } = await import("node:fs");
-  const dash = readFileSync(new URL("../components/dashboard.tsx", import.meta.url), "utf8");
-  // The rows come from reviewQueue's flagged list (marked people already left out).
-  assert.match(dash, /\{reviewGroups\.length \|\| flaggedOnly\.length \? \(\s*<ul className="row-list">/);
-  assert.match(dash, /\{flaggedOnly\.map\(\(seat\) =>\s*row\(/);
-  // A flagged person opens in place there, not in the side panel.
-  assert.match(dash, /!flaggedIdSet\.has\(selectedId\)/);
-  // All clear only when nobody is flagged and nobody marked is still catching up.
-  assert.match(dash, /catchingUp\s*\?\s*"Marked as reviewed\. The camera will catch up in a moment\."\s*:\s*"All clear\. Cues will ask when someone may need you\."/);
-});
-
-test("a flagged person without a request gets durable choices behind the rollout flag", async () => {
-  const { readFileSync } = await import("node:fs");
-  const dash = readFileSync(new URL("../components/dashboard.tsx", import.meta.url), "utf8");
-  assert.match(dash, /flaggedIdSet\.has\(seatId\) && pending\.length === 0\s*\? flagDecisions/);
-  assert.match(dash, /mark=\{flagDecisions\(/);
-  assert.match(dash, /reviewActionsEnabled && client && sessionId \? \(\s*<FlagDecisionButtons/);
-  const button = readFileSync(new URL("../components/mark-reviewed-button.tsx", import.meta.url), "utf8");
-  const decisions = button.slice(button.indexOf("export function FlagDecisionButtons"));
-  assert.match(decisions, /resolutionLabels\.confirmed/);
-  assert.match(decisions, /resolutionLabels\.dismissed/);
-  // Preserve the actual choice, without inventing an agent review.
-  assert.match(decisions, /recordFlagDecision\(client, request\.current\.observation, choice, request\.current\.id\)/);
-  assert.doesNotMatch(decisions, /markSeatReviewed\(/);
-  assert.match(dash, /if \(!flagDecisionsEnabled\) return markReviewedButton\(sessionId, seatId\)/);
-  assert.doesNotMatch(decisions, /resolve_teacher_review|resolveTeacherReview/);
-  assert.ok(decisions.includes("locked.current = true")); // a double click saves once
-});

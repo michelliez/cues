@@ -46,7 +46,6 @@ export function observationPresentation(
     detail: "No observation has been received.",
     score: null,
     currentStatus: null,
-    needsReview: false,
     unavailable: true,
   };
   if (!state) return empty;
@@ -78,12 +77,22 @@ export function observationPresentation(
       );
   }
   const evaluated = evaluatedProgress(state, options?.now ?? undefined);
+  // Vision may still write review / needs_help. Those are observations about
+  // the task, never a decision that the teacher should step in: only a pending
+  // teacher_review (written by the agent) does that. So they read neutrally here.
+  const raw = state.status === "review" || state.status === "needs_help";
+  const neutral = raw
+    ? {
+        label: "Low task match",
+        detail:
+          "The task isn’t matching right now. This is an observation, not a request for support.",
+      }
+    : statuses[state.status];
   return {
-    label: evaluated?.trend === "stalled" ? "Stalled" : evaluated?.trend === "improving" ? "Improving" : statuses[state.status].label,
-    detail: evaluated?.trend === "stalled" ? "Valid task observations show sustained lack of progress." : statuses[state.status].detail,
+    label: evaluated?.trend === "stalled" ? "Stalled" : evaluated?.trend === "improving" ? "Improving" : neutral.label,
+    detail: evaluated?.trend === "stalled" ? "Valid task observations show sustained lack of progress." : neutral.detail,
     score: state.status === "tracking_lost" ? null : state.task_score,
     currentStatus: state.status,
-    needsReview: state.status === "review" || state.status === "needs_help",
     unavailable: state.status === "tracking_lost",
   };
 }

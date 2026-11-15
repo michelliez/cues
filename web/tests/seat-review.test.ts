@@ -93,16 +93,16 @@ test("a review the teacher marked reviewed is valid but never waiting", () => {
 });
 
 // The runner does not mount React: check the wiring in source.
-test("the button is wired where Needs Review shows, and only with review actions on", () => {
+test("Mark as reviewed is wired only to people with a pending review, and only with review actions on", () => {
   const dashboard = readFileSync(new URL("../components/dashboard.tsx", import.meta.url), "utf8");
   assert.match(dashboard, /reviewActionsEnabled && client && sessionId/);
-  // A person opened from the strip, an opened row in Attention (flagged people
-  // there answer with flagDecisions instead), and each card on the To review page.
-  assert.equal((dashboard.match(/actions=\{markReviewedButton\(/g) ?? []).length, 1);
-  assert.match(dashboard, /\? flagDecisions\s*: markReviewedButton\)\(/);
+  // An opened row in Attention (it has a pending review by construction) and each card
+  // on the To review page. A person opened from the strip with no request gets none.
+  assert.match(dashboard, /pending\.length\s*\? markReviewedButton\(pending\[0\]\.session_id, seatId\)\s*: null/);
   assert.match(dashboard, /mark=\{markReviewedButton\(lead\.session_id, group\.seat_id\)\}/);
+  assert.equal((dashboard.match(/markReviewedButton\(/g) ?? []).length, 2); // the two calls above
   const person = readFileSync(new URL("../components/person-panel.tsx", import.meta.url), "utf8");
-  assert.ok(person.includes("{presentation?.needsReview && !review ? actions : null}"));
+  assert.ok(!person.includes("needsReview"));
   const button = readFileSync(new URL("../components/mark-reviewed-button.tsx", import.meta.url), "utf8");
   assert.ok(button.includes("locked.current = true")); // a double click marks once
   assert.ok(button.includes("disabled={!authenticated || saving || done}"));

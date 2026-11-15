@@ -12,7 +12,26 @@ the camera-decision repair, and verify each before moving on. Do not apply
 unrelated pending migrations, enable feature flags or send notifications as part
 of this step. After the user reloaded Codex, the official Supabase MCP tools
 loaded. Both repairs are now hosted and passed database checks separately; the
-new feature remains off pending signed-in browser/camera acceptance.
+camera-only backend has no caller in the integrated dashboard (see merge record).
+
+### Main integration (2026-11-15)
+
+- User explicitly requested committing this work and merging it to main. Created
+  an isolated checkout to preserve the running workspace and unrelated files.
+- Main at `b1c2f76` contains newer observation-context/camera-health fixes and
+  deliberately removes camera-only Attention/To review entries. Preserved those
+  changes; did not restore the earlier camera-only UI, browser helper or flag.
+  The already-applied ledger/RPC and canonical model remain as backend infrastructure.
+- The review acknowledgement repair still applies to actual teacher reviews and
+  keeps its authenticated RPC signature. Retained the one-press session reset and
+  companion-return fixes from Evan's earlier commits.
+- Integrated the latest remote Evan commit's optional time-on-task review mode,
+  defaulting its new flag off under the repository's unverified-feature rule.
+  Main's judged-evidence behavior stays the default; tracking loss remains excluded.
+  Both modes have tests. Cross-owner files: vision status/tests and shared contracts.
+- Earlier frontend rollout instructions and verification counts below are historical;
+  current startup/database/PRD docs describe the actual integrated tree. Final CI
+  and independent review results will be recorded before merging.
 
 ### Completed hosted rollout (2026-11-15)
 
@@ -97,7 +116,7 @@ new feature remains off pending signed-in browser/camera acceptance.
 |---|---|---|
 | 6. Missing local sender dependency | Verified locally | Lockfile install, sender import, TypeScript and notification tests passed; no dependency versions changed |
 | 3. Resolved review returns as a camera flag | Applied; verified in hosted database | Migration `20261115082639`; hosted transactional checks passed after the existing local suites. Browser/camera acceptance remains |
-| 4. Camera-only decisions lose the answer | Applied; verified in hosted database | Migration `20261115082802`; hosted decisions, idempotency, RLS and immutability checks passed. Local suites passed; flag remains off pending browser/camera acceptance |
+| 4. Camera-only decisions lose the answer | Backend applied; verified in hosted database | Migration `20261115082802`; hosted decisions, idempotency, RLS and immutability checks passed. Main's removal of camera-only UI is preserved; no flag or dashboard caller |
 | 1. Hosted Supabase REST timeout | Reads recovered on runtime recheck | Activities returned 200; one fresh observation matched S3's active task/revision. Original timeout cause remains unknown; no infrastructure change made |
 | 5. Running older worktree | Runtime alignment verified | Current dashboard, vision and worker run from this checkout; served dashboard/review props include the current flag-off code. No restart needed |
 | 2. No running vision service | Service recovered; camera health verified | Current loopback service reports an open camera, ~30 fps and zero pipeline errors. Gesture accuracy and full teacher-action acceptance remain unverified |

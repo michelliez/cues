@@ -40,11 +40,14 @@ class SupabaseSeatStateSource:
         "seat_id,session_id,activity_id,status,updated_at,tracking_valid,"
         "task_score,expression_context,session_revision"
     )
+    # Migration 20261115000100. Without the column a row's observability follows its score.
+    OBSERVABLE_FIELD = ",task_observable"
 
     def __init__(self, client, station_provider=None) -> None:
         self.client = client
         self.station_provider = station_provider
         self._session_id: str | None = None  # the active session found by the last fetch()
+        self._observable_column = True
 
     def fetch(self) -> Sequence[Mapping[str, Any]]:
         if self.station_provider is None:
@@ -70,14 +73,7 @@ class SupabaseSeatStateSource:
             self.client.table("seats").select("id").eq("station_id", station).execute().data or []
         )
         ids = {row["id"] for row in seats}
-        rows = (
-            self.client.table("seat_state")
-            .select(self.FIELDS)
-            .eq("session_id", session["id"])
-            .execute()
-            .data
-            or []
-        )
+        rows = self._seat_state_rows(session["id"])
         if self.station_provider() != station:
             return []
         return [
@@ -87,6 +83,18 @@ class SupabaseSeatStateSource:
             and row.get("session_revision") == session["revision"]
             and row.get("activity_id") == session["current_activity_id"]
         ]
+
+    def _seat_state_rows(self, session_id) -> list:
+        fields = self.FIELDS + (self.OBSERVABLE_FIELD if self._observable_column else "")
+        try:
+            query = self.client.table("seat_state").select(fields).eq("session_id", session_id)
+            return query.execute().data or []
+        except Exception as exc:
+            if not (self._observable_column and "task_observable" in str(exc)):
+                raise
+            self._observable_column = False  # column not applied yet: read without it
+            log.warning("seat_state.task_observable is not in the database yet; apply migration")
+            return self._seat_state_rows(session_id)
 
     def fetch_marks(self) -> dict[tuple[UUID, str], datetime]:
         """The teacher's "Mark as reviewed" marks for the active session (seat id and time)."""
@@ -253,6 +261,8 @@ class SeatStatePipeline:
             if age < 0
             else "tracking_unavailable"
             if snapshot.tracking_valid is not True
+            else "task_not_observable"
+            if not snapshot.task_observable and progress.trend != "completed"
             else "completion_latched"
             if progress.trend == "completed"
             else "observation_gap"
