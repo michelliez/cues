@@ -118,3 +118,35 @@ one, the notifier is never reached. This is an upstream trigger failure, not
 evidence that Photon itself is unavailable. Recipient activation, consent and
 provider delivery still need independent verification. No Photon message was
 sent and no Supabase state was changed during these checks.
+
+## Solution investigation and subsequent successful request
+
+A later synthetic request through `CuesDeepAgent.run`, still using explicit
+in-memory review storage, the same Groq model and zero provider retries,
+**succeeded** with `continue_monitoring`. No output cap was configured for that
+request. Thus a normal agent request is not universally blocked now; the precise
+quota/window responsible for earlier failures remains unverified. This does not
+establish that the running worker's recent requests or notification flow succeeded.
+
+Groq's primary documentation describes request/token limits at organization level,
+429 responses, `retry-after`, remaining/reset headers and higher plan limits:
+https://console.groq.com/docs/rate-limits . Account-specific limits should be
+checked there rather than assumed from public model tables.
+
+Code recovery gap: `EvaluationRouter.route` records an eligible level before
+`SeatStatePipeline.process_row` invokes the model. If that invocation fails,
+`SeatStateRuntime.run_once` logs the exception without rearming the router or
+queuing a retry. Equal/weaker levels remain suppressed; only a stronger level,
+recovery/completion or explicit reset can rearm evaluation. At the strongest
+failed level, a continuing stalled episode may receive no further model attempt
+even after quota becomes available. This is separate from Groq enforcing limits.
+
+Proposed first code fix: bounded, rate-aware retry/cooldown for failed eligible
+evaluations, honoring provider retry timing and requiring fresh, still-applicable
+session/task/tracking evidence before retry. Do not reset routing and immediately
+retry on every observation, create a synthetic review, or send invented agent
+reasoning. Budget model input/output and make provider unavailability visible.
+Higher organization quota or another configured provider addresses capacity when
+real workload exceeds the available limit; code cannot manufacture that capacity.
+No retry implementation, provider switch, account change or Supabase write was
+performed during this investigation.

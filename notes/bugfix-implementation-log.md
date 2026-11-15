@@ -12,11 +12,76 @@ Read it with `backend-audit-2026-11-15.md` before starting another fix. The PRD 
 still the product source of truth. Update this log with actual verification
 results before moving to another issue; a local test pass is not a hosted rollout.
 
-**Latest user constraint (2026-11-15): keep these changes local to the `evan`
-branch. Do not change hosted Supabase yet.** This supersedes the preceding request
-to apply the migrations. Do not apply migrations, change hosted data/schema or
-enable the new feature. The earlier connection question is no longer needed for
-the current scope. Any future hosted rollout needs renewed user authorization.
+**Latest user authorization (2026-11-15): apply the two prepared repair migrations.**
+The user's new request supersedes the earlier local-only restriction for that
+rollout. Verify migration history first, apply the review-reset repair before
+the camera-decision repair, and verify each before moving on. Do not apply
+unrelated pending migrations, enable feature flags or send notifications as part
+of this step. After the user reloaded Codex, the official Supabase MCP tools
+loaded. Both repairs are now hosted and passed database checks separately; the
+new feature remains off pending signed-in browser/camera acceptance.
+
+### Completed hosted rollout (2026-11-15)
+
+- Inspected migration history, affected table columns and existing RPC/trigger
+  definitions before applying changes. History already included migration 018
+  (`interventions`) and `20261115000100_task_observable`, neither applied by this
+  rollout. The latter conflicted with the first repair's original local version.
+- Applied `review_resolution_marks` through official MCP `apply_migration` as
+  `20261115082639`. Before moving to the next repair, hosted rollback checks
+  verified confirmed/dismissed acknowledgements, preserved teacher answers,
+  unchanged camera observations, newer-mark preservation, historical-activity
+  isolation, repeat-answer rejection, Mark as reviewed and restricted grants.
+- Applied `teacher_flag_decisions` as `20261115082802`. Hosted rollback checks
+  verified both durable choices, pending-review resolution without fabricating an
+  agent review, identical retries (including after session end), conflict/stale/
+  revision/duplicate rejection, owner-only access and RLS, immutable records,
+  RPC-only writes, unchanged observations and acknowledgement stability.
+- Follow-up counts found zero test stations, seats, sessions or decision records
+  remaining. Test fixtures used fresh simulated identifiers inside transactions
+  that were rolled back; no existing review or camera observation was altered.
+- Hosted REST schema probe of `teacher_flag_decisions` returned **200** and an
+  empty result with `limit=0`, using existing backend credentials. No secret or
+  person record was printed. This establishes API visibility, not a signed-in
+  browser acceptance test.
+- Replayed the reconciled local chain and ran the full database suite:
+  **98 passed, no skips, 44.64s**. Ruff lint, formatting and `git diff --check`
+  passed. The first restricted run could not initialize its temporary PostgreSQL
+  clusters; the permitted rerun passed. No web/Python application code changed,
+  so their previously passing suites were not repeated for this rollout.
+- Local repair filenames now match MCP-assigned hosted versions. Recovered the
+  exact already-hosted `task_observable` SQL into this branch to reconcile the
+  migration chain. No migration ledger entries were manually rewritten and no
+  unrelated hosted migration was replayed. Updated startup, database, PRD and
+  audit references. The second repair's dependency comment follows the new name.
+- Final source comparison matched local SQL to hosted ledger statements for
+  both repairs, the recovered `task_observable` migration and existing 018
+  (ignoring comments, statement separators and whitespace). Hosted history lists
+  all 24 local migration versions. A transient MCP OAuth-refresh error on a
+  read-only check recovered on retry; final history/source reads succeeded.
+- Used official Supabase and Supabase Postgres Best Practices skills from a
+  temporary installation under `/tmp/cues-supabase-guidance`; no project package
+  or lockfile changes. The existing backend architecture skill also informed the
+  decision to preserve the current RPC architecture.
+- No feature flags, Vercel deployment, notifications or runtime restarts were
+  changed. Database-role checks are complete; signed-in browser/camera acceptance,
+  Auth/Realtime flow verification and team contract sign-off remain separate gates.
+
+### Supabase connection setup (2026-11-15)
+
+- User authorized remote setup of the Supabase integration. Used the signed-in
+  Safari dashboard and its official Codex MCP instructions; no password reset or
+  personal access token was needed.
+- Added Codex MCP server `supabase-cues`, targeting project
+  `euouguyfakajbbbvojwe` with `database,docs` tool groups. This is an official
+  custom MCP connection, not an installed Supabase catalog plugin.
+- Verification: Safari displayed “Authentication complete”; the CLI reported
+  “Successfully logged in.” `codex mcp get supabase-cues --json` confirms the
+  server is enabled and the project/tool-group URL is configured. The CLI list
+  reports auth status `unknown`, so that listing is not a database access test.
+- Initially this chat exposed no Supabase tools. The user reloaded Codex and
+  authenticated database access was then verified by the rollout above. No SQL,
+  flags or hosted data were changed during the connection-setup step itself.
 
 ## Scope and operating rules
 
@@ -27,8 +92,9 @@ the current scope. Any future hosted rollout needs renewed user authorization.
   vision/worker mark readers. Do not add another backend server or provider.
 - No camera frames, images, diagnoses or expression labels enter decision records.
 - A teacher's support decision is not intervention approval and changes no task.
-- Do not deploy, apply hosted migrations, send notifications, restart another
-  worktree or contact Vercel during these implementation steps.
+- Keep implementation local except for the two explicitly authorized hosted
+  repairs recorded above. Do not send notifications, restart another worktree or
+  contact Vercel as part of this rollout.
 - Schema/contract changes need documented rollout instructions and team sign-off
   in the eventual PR. Do not claim those sign-offs or live checks happened.
 
@@ -37,13 +103,14 @@ the current scope. Any future hosted rollout needs renewed user authorization.
 | Audit finding | Status | Evidence / remaining requirement |
 |---|---|---|
 | 6. Missing local sender dependency | Verified locally | Lockfile install, sender import, TypeScript and notification tests passed; no dependency versions changed |
-| 3. Resolved review returns as a camera flag | Implemented; verified locally | Migration `20261115000100`, queue suppression, consistent review/mark lock order; 79 database + 225 web + 35 consumer tests, lint/types/build passed |
-| 4. Camera-only decisions lose the answer | Implemented; verified locally | Migration `20261115000200`, canonical ledger model, typed RPC acknowledgement and safe flag-off fallback; 98 database + 231 web + 674 Python tests passed; flag remains off |
+| 3. Resolved review returns as a camera flag | Applied; verified in hosted database | Migration `20261115082639`; hosted transactional checks passed after the existing local suites. Browser/camera acceptance remains |
+| 4. Camera-only decisions lose the answer | Applied; verified in hosted database | Migration `20261115082802`; hosted decisions, idempotency, RLS and immutability checks passed. Local suites passed; flag remains off pending browser/camera acceptance |
 | 1. Hosted Supabase REST timeout | Reads recovered on runtime recheck | Activities returned 200; one fresh observation matched S3's active task/revision. Original timeout cause remains unknown; no infrastructure change made |
 | 5. Running older worktree | Runtime alignment verified | Current dashboard, vision and worker run from this checkout; served dashboard/review props include the current flag-off code. No restart needed |
 | 2. No running vision service | Service recovered; camera health verified | Current loopback service reports an open camera, ~30 fps and zero pipeline errors. Gesture accuracy and full teacher-action acceptance remain unverified |
 
-The preceding fix is still uncommitted and its migration is not deployed.
+Both repair migrations are deployed; local history/documentation reconciliation
+is uncommitted. Historical implementation results below describe their original gates.
 The detailed original evidence remains in `backend-audit-2026-11-15.md`.
 
 ## Completed implementation: preserve camera-only teacher decisions (finding 4)
@@ -109,7 +176,7 @@ choice; this task must not fabricate a review or invent agent evidence for it.
 - Started: scope checked against the audit, current code, PRD and team rules.
 - Skills used: backend architecture (`vercel:create-a-backend`) and full-story
   verification (`vercel:verification`). Keep the current RPC/database architecture.
-- Backend implemented in migration `20261115000200_teacher_flag_decisions.sql`.
+- Backend implemented in migration `20261115082802_teacher_flag_decisions.sql`.
   The immutable ledger has unique request IDs and unique session/person/revision/
   observation tuples. A transaction advisory lock serializes decision requests
   without blocking vision's observation row; session locks protect activity/revision.
@@ -177,7 +244,7 @@ local sockets and inspect their own test processes. Builds need compiler/font
 access. The successful runs used those permissions; a sandbox denial is not
 reported as a product failure. Fixtures stopped their temporary clusters.
 
-### Rollout and next-step handoff
+### Original local handoff (superseded by completed hosted rollout above)
 
 - Both local repair migrations remain unapplied to the hosted project. Feature off.
 - No Vercel calls, live notification sends, camera activation or other-worktree restart.
@@ -310,3 +377,36 @@ storage was in memory. Photon is independent of Groq, but automatic notification
 are only invoked after a new review is persisted, so a failed model request never
 reaches that notification step. No messaging delivery was attempted, no Supabase
 changes were made, and no application behavior was modified.
+
+A subsequent normal synthetic `CuesDeepAgent.run` request succeeded with
+`continue_monitoring` and in-memory-only storage. Earlier rate-limit results are
+historical observations, not proof of a current permanent outage. Recovery code
+also needs attention: the router marks an evaluation level before calling the
+model and does not rearm/queue it on failure. Proposed next local fix is bounded,
+rate-aware retry/cooldown with fresh-context checks, alongside token budgets and
+visible agent availability. Groq organization-level quotas remain an independent
+capacity constraint. No implementation or hosted/account change has been made.
+
+## Renewed migration rollout request — 2026-11-15
+
+The user explicitly requested applying the migrations again. This authorizes
+the two reviewed repairs and supersedes the previous local-only restriction for
+that operation. The prepared files are present in the current `evan` checkout
+at `c898431`; existing local documentation changes are preserved.
+
+Fresh connection checks still cannot establish administrative access:
+
+- The migration-list helper stopped with `Saved DATABASE_URL and Supabase project
+  URL are required.`
+- No `DATABASE_URL`, `POSTGRES_URL` or `SUPABASE_ACCESS_TOKEN` was present in the
+  standard project configuration/environment; no linked project metadata exists.
+- The official pinned CLI's read-only project listing reported no access token.
+- Plugin discovery confirmed Supabase is not installed/connected in this session.
+
+No SQL was applied, no migration history was changed and no feature was enabled.
+The missing prerequisite is access, not another deployment approval. The user can
+save the project's `DATABASE_URL` securely in the root `.env` or establish the
+Supabase integration connection. Do not ask them to paste credentials in chat.
+After access is available, inspect the remote history and pending set before any
+push: migration 018 was historically pending and is unrelated to these two repairs.
+Do not silently deploy it with an unrestricted all-pending push.
